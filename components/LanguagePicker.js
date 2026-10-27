@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { SPEECH_LANGUAGES } from "../speech";
+import LanguagePicker from "../components/LanguagePicker";
 
 // The languages a person can read explanations in: English plus the 20 languages
 export const NATIVE_OPTIONS = ["English", ...SPEECH_LANGUAGES];

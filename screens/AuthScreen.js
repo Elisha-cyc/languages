@@ -7,6 +7,7 @@ import {
   ScrollView,
 } from "react-native";
 import { useAuth } from "../auth";
+import LanguagePicker from "../components/LanguagePicker";
 
 export default function AuthScreen() {
   const { login, register } = useAuth();
