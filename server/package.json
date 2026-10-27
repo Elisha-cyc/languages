@@ -1,0 +1,25 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node --env-file=.env server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "csv-parse": "^7.0.3",
+    "expo-image-picker": "~57.0.20",
+    "express": "^5.3.0",
+    "hanzi-writer": "^3.7.3",
+    "hanzi-writer-data": "^2.0.1",
+    "mammoth": "^0.3.29",
+    "multer": "^2.4.0",
+    "pdf-parse": "^2.4.5",
+    "tesseract.js": "^7.0.0"
+  }
+}

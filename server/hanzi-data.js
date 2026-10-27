@@ -1,0 +1,626 @@
+// c(char, pinyin, meaning, strokes, parts, tip, words)
+const c = (char, pinyin, meaning, strokes, parts, tip, words) => ({
+  char,
+  pinyin,
+  meaning,
+  strokes,
+  parts,
+  tip,
+  words: words.map(([zh, py, en]) => ({ zh, pinyin: py, en })),
+});
+
+const LESSONS = [
+  {
+    id: 1,
+    title: "Numbers and people",
+    chars: [
+      c(
+        "一",
+        "yī",
+        "one",
+        1,
+        "",
+        "One horizontal line, written left to right.",
+        [
+          ["一个", "yí gè", "one (of something)"],
+          ["一月", "yīyuè", "January"],
+        ],
+      ),
+      c(
+        "二",
+        "èr",
+        "two",
+        2,
+        "",
+        "Two lines. The top line is shorter than the bottom one.",
+        [
+          ["二月", "èryuè", "February"],
+          ["二十", "èrshí", "twenty"],
+        ],
+      ),
+      c(
+        "三",
+        "sān",
+        "three",
+        3,
+        "",
+        "Three lines. The middle one is the shortest, the bottom one the longest.",
+        [
+          ["三月", "sānyuè", "March"],
+          ["三个", "sān gè", "three (of something)"],
+        ],
+      ),
+      c(
+        "十",
+        "shí",
+        "ten",
+        2,
+        "",
+        "A cross. Write the horizontal line first, then the vertical one.",
+        [
+          ["十月", "shíyuè", "October"],
+          ["十五", "shíwǔ", "fifteen"],
+        ],
+      ),
+      c(
+        "人",
+        "rén",
+        "person",
+        2,
+        "",
+        "A person walking: the left-falling stroke first, then the right-falling one.",
+        [
+          ["大人", "dàrén", "adult"],
+          ["好人", "hǎorén", "good person"],
+        ],
+      ),
+    ],
+  },
+  {
+    id: 2,
+    title: "Big, small, sun and moon",
+    chars: [
+      c(
+        "大",
+        "dà",
+        "big",
+        3,
+        "一 + 人",
+        "A person stretching out their arms wide: big.",
+        [
+          ["大人", "dàrén", "adult"],
+          ["大学", "dàxué", "university"],
+        ],
+      ),
+      c(
+        "小",
+        "xiǎo",
+        "small",
+        3,
+        "",
+        "A center stroke with a dot on each side. Write the center first.",
+        [
+          ["小学", "xiǎoxué", "primary school"],
+          ["大小", "dàxiǎo", "size"],
+        ],
+      ),
+      c(
+        "口",
+        "kǒu",
+        "mouth",
+        3,
+        "",
+        "An open mouth drawn as a box. Close the box last.",
+        [
+          ["人口", "rénkǒu", "population"],
+          ["门口", "ménkǒu", "doorway"],
+        ],
+      ),
+      c(
+        "日",
+        "rì",
+        "sun, day",
+        4,
+        "",
+        "The sun as a box with a line across it.",
+        [
+          ["日本", "Rìběn", "Japan"],
+          ["生日", "shēngrì", "birthday"],
+        ],
+      ),
+      c(
+        "月",
+        "yuè",
+        "moon, month",
+        4,
+        "",
+        "A crescent moon with two lines inside.",
+        [
+          ["月亮", "yuèliang", "the moon"],
+          ["一月", "yīyuè", "January"],
+        ],
+      ),
+    ],
+  },
+  {
+    id: 3,
+    title: "Nature",
+    chars: [
+      c(
+        "山",
+        "shān",
+        "mountain",
+        3,
+        "",
+        "Three peaks. The middle one is the tallest.",
+        [
+          ["火山", "huǒshān", "volcano"],
+          ["山水", "shānshuǐ", "scenery"],
+        ],
+      ),
+      c(
+        "水",
+        "shuǐ",
+        "water",
+        4,
+        "",
+        "Flowing water, with drops on both sides of the center line.",
+        [
+          ["水果", "shuǐguǒ", "fruit"],
+          ["喝水", "hē shuǐ", "drink water"],
+        ],
+      ),
+      c(
+        "火",
+        "huǒ",
+        "fire",
+        4,
+        "",
+        "Flames flickering upward, with a spark on each side.",
+        [
+          ["火车", "huǒchē", "train"],
+          ["火山", "huǒshān", "volcano"],
+        ],
+      ),
+      c(
+        "木",
+        "mù",
+        "tree, wood",
+        4,
+        "十 + 人",
+        "A tree with a trunk, branches and roots.",
+        [
+          ["木头", "mùtou", "wood"],
+          ["树木", "shùmù", "trees"],
+        ],
+      ),
+      c(
+        "土",
+        "tǔ",
+        "earth, soil",
+        3,
+        "十 + 一",
+        "A mound of soil on the ground. The bottom line is longer than the top one.",
+        [
+          ["土地", "tǔdì", "land"],
+          ["土豆", "tǔdòu", "potato"],
+        ],
+      ),
+    ],
+  },
+  {
+    id: 4,
+    title: "People and body",
+    chars: [
+      c("女", "nǚ", "woman", 3, "", "A kneeling woman with her arms crossed.", [
+        ["女人", "nǚrén", "woman"],
+        ["女儿", "nǚ'ér", "daughter"],
+      ]),
+      c("子", "zǐ", "child", 3, "", "A baby with its arms stretched out.", [
+        ["儿子", "érzi", "son"],
+        ["孩子", "háizi", "child"],
+      ]),
+      c(
+        "目",
+        "mù",
+        "eye",
+        5,
+        "",
+        "An eye turned on its side, with the pupil in the middle.",
+        [
+          ["目的", "mùdì", "goal, purpose"],
+          ["目前", "mùqián", "at present"],
+        ],
+      ),
+      c(
+        "手",
+        "shǒu",
+        "hand",
+        4,
+        "",
+        "A hand with fingers on top and the wrist below.",
+        [
+          ["手机", "shǒujī", "mobile phone"],
+          ["洗手", "xǐ shǒu", "wash hands"],
+        ],
+      ),
+      c(
+        "心",
+        "xīn",
+        "heart",
+        4,
+        "",
+        "A heart: one hook with three dots around it.",
+        [
+          ["小心", "xiǎoxīn", "be careful"],
+          ["开心", "kāixīn", "happy"],
+        ],
+      ),
+    ],
+  },
+  {
+    id: 5,
+    title: "Place and direction",
+    chars: [
+      c(
+        "中",
+        "zhōng",
+        "middle",
+        4,
+        "口 + 丨",
+        "A line going through the middle of a box.",
+        [
+          ["中国", "Zhōngguó", "China"],
+          ["中文", "Zhōngwén", "the Chinese language"],
+        ],
+      ),
+      c(
+        "国",
+        "guó",
+        "country",
+        8,
+        "囗 + 玉",
+        "A border (囗) around a treasure inside: a country. Close the box last.",
+        [
+          ["国家", "guójiā", "country"],
+          ["中国", "Zhōngguó", "China"],
+        ],
+      ),
+      c(
+        "上",
+        "shàng",
+        "up, above",
+        3,
+        "",
+        "A short line above a long baseline: up.",
+        [
+          ["上班", "shàngbān", "go to work"],
+          ["上学", "shàngxué", "go to school"],
+        ],
+      ),
+      c(
+        "下",
+        "xià",
+        "down, below",
+        3,
+        "",
+        "A short line below a long baseline: down.",
+        [
+          ["下雨", "xià yǔ", "rain"],
+          ["下午", "xiàwǔ", "afternoon"],
+        ],
+      ),
+      c(
+        "五",
+        "wǔ",
+        "five",
+        4,
+        "",
+        "Order: horizontal, vertical, horizontal-turn, then the long bottom line.",
+        [
+          ["五月", "wǔyuè", "May"],
+          ["五个", "wǔ gè", "five (of something)"],
+        ],
+      ),
+    ],
+  },
+  {
+    id: 6,
+    title: "Pronouns and greetings",
+    chars: [
+      c(
+        "好",
+        "hǎo",
+        "good",
+        6,
+        "女 + 子",
+        "A woman (女) with a child (子): good. Write the left part first.",
+        [
+          ["你好", "nǐ hǎo", "hello"],
+          ["好吃", "hǎochī", "tasty"],
+        ],
+      ),
+      c(
+        "你",
+        "nǐ",
+        "you",
+        7,
+        "亻 + 尔",
+        "The person radical (亻) on the left, 尔 on the right.",
+        [
+          ["你们", "nǐmen", "you (plural)"],
+          ["你好", "nǐ hǎo", "hello"],
+        ],
+      ),
+      c(
+        "我",
+        "wǒ",
+        "I, me",
+        7,
+        "",
+        "A very common character. Write it slowly: the dot comes last.",
+        [
+          ["我们", "wǒmen", "we"],
+          ["我爱你", "wǒ ài nǐ", "I love you"],
+        ],
+      ),
+      c(
+        "他",
+        "tā",
+        "he, him",
+        5,
+        "亻 + 也",
+        "The person radical (亻) on the left, 也 on the right.",
+        [
+          ["他们", "tāmen", "they"],
+          ["他的", "tā de", "his"],
+        ],
+      ),
+      c(
+        "们",
+        "men",
+        "plural for people",
+        5,
+        "亻 + 门",
+        "A person (亻) and a door (门). It makes 我, 你, 他 plural.",
+        [
+          ["我们", "wǒmen", "we"],
+          ["你们", "nǐmen", "you (plural)"],
+        ],
+      ),
+    ],
+  },
+  {
+    id: 7,
+    title: "Love, study and life",
+    chars: [
+      c(
+        "爱",
+        "ài",
+        "love",
+        10,
+        "",
+        "The simplified form dropped the heart (心) found in the traditional form 愛.",
+        [
+          ["爱好", "àihào", "hobby"],
+          ["可爱", "kě'ài", "cute"],
+        ],
+      ),
+      c(
+        "学",
+        "xué",
+        "to study",
+        8,
+        "",
+        "A child (子) under a roof: studying.",
+        [
+          ["学生", "xuésheng", "student"],
+          ["学习", "xuéxí", "to study"],
+        ],
+      ),
+      c(
+        "生",
+        "shēng",
+        "to be born, life",
+        5,
+        "",
+        "A plant growing out of the ground: life.",
+        [
+          ["学生", "xuésheng", "student"],
+          ["生日", "shēngrì", "birthday"],
+        ],
+      ),
+      c(
+        "天",
+        "tiān",
+        "sky, heaven",
+        4,
+        "一 + 大",
+        "A big person (大) with a line above: the sky.",
+        [
+          ["今天", "jīntiān", "today"],
+          ["天气", "tiānqì", "weather"],
+        ],
+      ),
+      c(
+        "马",
+        "mǎ",
+        "horse",
+        3,
+        "",
+        "The simplified form of the horse 馬. Write the turn first, then the two horizontals.",
+        [
+          ["马上", "mǎshàng", "immediately"],
+          ["马路", "mǎlù", "road"],
+        ],
+      ),
+    ],
+  },
+  {
+    id: 8,
+    title: "Everyday grammar words",
+    chars: [
+      c(
+        "的",
+        "de",
+        "of, 's (possessive)",
+        8,
+        "白 + 勺",
+        "The most common Chinese character. It joins a describing word to a noun.",
+        [
+          ["我的", "wǒ de", "my, mine"],
+          ["好的", "hǎo de", "OK"],
+        ],
+      ),
+      c("是", "shì", "to be", 9, "", "The verb 'to be'. The top part is 日.", [
+        ["是的", "shì de", "yes, that is right"],
+        ["不是", "bú shì", "is not"],
+      ]),
+      c(
+        "不",
+        "bù",
+        "not",
+        4,
+        "",
+        "Order: horizontal, left-falling, vertical, dot.",
+        [
+          ["不好", "bù hǎo", "not good"],
+          ["不是", "bú shì", "is not"],
+        ],
+      ),
+      c(
+        "有",
+        "yǒu",
+        "to have",
+        6,
+        "",
+        "The bottom part is 月. The first two strokes are the left-falling and horizontal.",
+        [
+          ["有人", "yǒu rén", "someone"],
+          ["没有", "méiyǒu", "do not have"],
+        ],
+      ),
+      c(
+        "在",
+        "zài",
+        "to be at, in",
+        6,
+        "",
+        "It contains 土 (earth) at the bottom right.",
+        [
+          ["在家", "zài jiā", "at home"],
+          ["现在", "xiànzài", "now"],
+        ],
+      ),
+    ],
+  },
+];
+
+const TECHNIQUES = {
+  strokes: [
+    {
+      name: "横",
+      pinyin: "héng",
+      english: "horizontal",
+      how: "Left to right, tilting slightly upward. Press at the start, ease off at the end.",
+      example: "一",
+    },
+    {
+      name: "竖",
+      pinyin: "shù",
+      english: "vertical",
+      how: "Top to bottom in a straight line. Start with a small press and stop cleanly.",
+      example: "十",
+    },
+    {
+      name: "撇",
+      pinyin: "piě",
+      english: "left-falling",
+      how: "Starts at the top right and sweeps down to the left, getting thinner as it goes.",
+      example: "人",
+    },
+    {
+      name: "捺",
+      pinyin: "nà",
+      english: "right-falling",
+      how: "Starts thin at the top left, slides down to the right and ends with a thicker foot.",
+      example: "人",
+    },
+    {
+      name: "点",
+      pinyin: "diǎn",
+      english: "dot",
+      how: "A short press, usually down and to the right. Keep it compact, not a long line.",
+      example: "六",
+    },
+    {
+      name: "提",
+      pinyin: "tí",
+      english: "rising",
+      how: "Starts at the bottom left and flicks up to the right. Quick and light.",
+      example: "我",
+    },
+    {
+      name: "钩",
+      pinyin: "gōu",
+      english: "hook",
+      how: "A small flick at the end of a stroke. Pause briefly at the corner, then flick.",
+      example: "小",
+    },
+    {
+      name: "折",
+      pinyin: "zhé",
+      english: "turn",
+      how: "The stroke turns a corner without lifting the pen. Pause briefly at the turn.",
+      example: "口",
+    },
+  ],
+  rules: [
+    {
+      title: "1. Top to bottom",
+      how: "Write the upper strokes before the lower ones.",
+      example: "三",
+    },
+    {
+      title: "2. Left to right",
+      how: "Write the left part before the right part.",
+      example: "好",
+    },
+    {
+      title: "3. Horizontal before vertical",
+      how: "When two strokes cross, write the horizontal one first.",
+      example: "十",
+    },
+    {
+      title: "4. Left-falling before right-falling",
+      how: "When the two meet, the left-falling stroke comes first.",
+      example: "人",
+    },
+    {
+      title: "5. Center before the sides",
+      how: "In symmetrical characters, write the middle first, then left, then right.",
+      example: "小",
+    },
+    {
+      title: "6. Outside first, close the box last",
+      how: "Write the outer frame, then what is inside, and close the bottom last.",
+      example: "国",
+    },
+    {
+      title: "7. The dot goes last",
+      how: "A dot inside or at the upper right is usually written last.",
+      example: "玉",
+    },
+  ],
+  tips: [
+    "Imagine every character inside a square (the 田字格 grid). All characters take about the same size.",
+    "Keep proportions. In 土 the top line is shorter than the bottom one, and in 士 it is the other way around.",
+    "Horizontal strokes tilt slightly upward, and vertical strokes stay straight.",
+    "Stroke order is not decoration: it makes handwriting faster, and handwriting input on a phone depends on it.",
+    "Practice in a loop: watch it once, trace it, then write it from memory.",
+  ],
+};
+
+const ALL_CHARS = LESSONS.flatMap((lesson) => lesson.chars);
+
+module.exports = { LESSONS, TECHNIQUES, ALL_CHARS };
