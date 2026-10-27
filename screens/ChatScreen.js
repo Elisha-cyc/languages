@@ -16,7 +16,6 @@ import { compareSpeech } from "../listen";
 import LanguagePicker from "../components/LanguagePicker";
 import { useVoice } from "../voice";
 import { takeTestResult } from "../testResult";
-
 const LEVELS = ["Beginner", "Intermediate", "Advanced"];
 const TOPICS = [
   "Free chat",

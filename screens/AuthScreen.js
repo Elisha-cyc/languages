@@ -7,7 +7,7 @@ import {
   ScrollView,
 } from "react-native";
 import { useAuth } from "../auth";
-import LanguagePicker from "../components/LanguagePicker";
+import LanguagePicker, { NATIVE_OPTIONS } from "../components/LanguagePicker";
 
 export default function AuthScreen() {
   const { login, register } = useAuth();
@@ -18,13 +18,21 @@ export default function AuthScreen() {
   const [inviteCode, setInviteCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [nativeLanguage, setNativeLanguage] = useState("English");
 
   async function submit() {
     setBusy(true);
     setError(null);
     try {
       if (mode === "login") await login(username, password);
-      else await register({ username, password, name, inviteCode });
+      else
+        await register({
+          username,
+          password,
+          name,
+          inviteCode,
+          nativeLanguage,
+        });
     } catch (e) {
       setError(e.message);
       setBusy(false);
