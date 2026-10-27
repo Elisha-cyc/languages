@@ -44,6 +44,8 @@ export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }) {
   const [state, setState] = useState({ loading: true, user: null });
+  const [nativeLanguage, setNativeLanguage] = useState("English");
+
 
   const signOutLocal = useCallback(async () => {
     token = null;
