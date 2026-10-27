@@ -39,3 +39,29 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+
+
+.env
+.env.*
+!.env.example
+
+server/.env
+server/node_modules/
+server/*.db
+server/*.db-*
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Server dependencies and persistent databases
+server/node_modules/
+server/.env
+server/*.db
+server/*.db-*
+
+# Local build output
+dist/
+.expo/

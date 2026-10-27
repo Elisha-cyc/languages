@@ -491,6 +491,7 @@ module.exports = {
   askTutor,
   generateLesson,
   extractVocabulary,
+  chatTest,
   chatReply,
   checkLesson,
   retellBook,
