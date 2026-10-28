@@ -7,7 +7,9 @@ const host = Constants.expoConfig?.hostUri?.split(":")[0] || "172.20.10.4";
 
 export const API_URL =
   configuredApiUrl ||
-  (Platform.OS === "web" ? "http://localhost:3000" : `http://${host}:3000`);
+  (Platform.OS === "web"
+    ? `http://${window.location.hostname}:3000`
+    : `http://${host}:3000`);
 
 export const USER_ID = 1;
 
