@@ -1,21 +1,12 @@
-
-$config = @"
 {
-  "buildCommand": "npx expo export --platform web",
-  "outputDirectory": "dist",
-  "framework": null,
-  "cleanUrls": true,
-  "rewrites": [
-    {
-      "source": "/:path*",
-      "destination": "/"
-    }
-  ]
+"buildCommand": "npx expo export --platform web",
+"outputDirectory": "dist",
+"framework": null,
+"cleanUrls": true,
+"rewrites": [
+  {
+    "source": "/:path*",
+    "destination": "/"
+  }
+]
 }
-"@
-
-[System.IO.File]::WriteAllText(
-    (Join-Path (Get-Location) "vercel.json"),
-    $config,
-    [System.Text.UTF8Encoding]::new($false)
-)
