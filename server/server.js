@@ -1,8 +1,6 @@
 const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
-const mammoth = require("mammoth");
-const { PDFParse } = require("pdf-parse");
 
 const { askTutor, MODES, retellBook, chatTest } = require("./ai");
 const supabase = require("./supabase");
@@ -20,13 +18,18 @@ const {
   BookError,
 } = require("./books");
 
-// ---------- Validate dependencies ----------
+// ---------- Heavy libraries load only when a file is uploaded ----------
+// (pdf-parse needs graphics packages that do not exist on Vercel; loading it
+// at startup would crash the whole server)
 
-if (typeof PDFParse !== "function") {
-  console.error(
-    "pdf-parse is an old version. Run: npm install pdf-parse@latest",
-  );
-  process.exit(1);
+function loadPdfParse() {
+  const { PDFParse } = require("pdf-parse");
+  if (typeof PDFParse !== "function") {
+    throw new Error(
+      "pdf-parse is an old version. Run: npm install pdf-parse@latest",
+    );
+  }
+  return PDFParse;
 }
 
 // ---------- App setup ----------
@@ -529,7 +532,7 @@ function cleanText(raw) {
 }
 
 async function pdfToText(bytes) {
-  const parser = new PDFParse({
+  const parser = new (loadPdfParse())({
     data: new Uint8Array(bytes),
   });
 
@@ -583,7 +586,8 @@ app.post("/import", (req, res) => {
           });
         }
 
-        text = (await mammoth.extractRawText({ buffer: bytes })).value;
+        text = (await require("mammoth").extractRawText({ buffer: bytes }))
+          .value;
       } else if (name.endsWith(".txt")) {
         text = bytes.toString("utf8");
       } else if (name.endsWith(".doc")) {
