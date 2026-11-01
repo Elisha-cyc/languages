@@ -12,6 +12,7 @@ import { useFetch } from "../useFetch";
 import { speak, stopSpeaking } from "../speech";
 import { API_URL } from "../config";
 import { useVoice } from "../voice";
+import { useQuietOnLeave } from "../useQuietOnLeave";
 
 const PASS = 70; // percent
 const MAX_TRIES = 3;
@@ -29,13 +30,10 @@ export default function FlashcardScreen({ navigation, route }) {
   const [problem, setProblem] = useState(null);
 
   // Stop any speech or recording when the user leaves this screen
-  useEffect(
-    () => () => {
-      stopSpeaking();
-      voice.cancel();
-    },
-    [],
-  );
+  useQuietOnLeave(() => {
+    stopSpeaking();
+    voice.cancel();
+  });
 
   if (error) return <Message text={error} />;
   if (!words)

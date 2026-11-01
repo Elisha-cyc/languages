@@ -15,6 +15,7 @@ import { speak, stopSpeaking } from "../speech";
 import { compareSpeech } from "../listen";
 import LanguagePicker from "../components/LanguagePicker";
 import { useVoice } from "../voice";
+import { useQuietOnLeave } from "../useQuietOnLeave";
 import { takeTestResult } from "../testResult";
 const LEVELS = ["Beginner", "Intermediate", "Advanced"];
 const TOPICS = [
@@ -55,13 +56,12 @@ export default function ChatScreen() {
   const userCount = messages.filter((m) => m.role === "user").length;
   const canTest = userCount >= 3;
 
-  useEffect(
-    () => () => {
-      stopSpeaking();
-      voice.cancel();
-    },
-    [],
-  );
+  // Stop talking and listening as soon as the user leaves this screen
+  const inFront = useQuietOnLeave(() => {
+    stopSpeaking();
+    voice.cancel();
+    setListening(null);
+  });
 
   // When the test screen is closed after a pass, start a fresh session
   useEffect(
@@ -111,7 +111,8 @@ export default function ChatScreen() {
           pronunciation: data.pronunciation,
         },
       ]);
-      if (mode === "voice" || readAloud) speak(data.reply, language);
+      if (inFront.current && (mode === "voice" || readAloud))
+        speak(data.reply, language);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -145,7 +146,8 @@ export default function ChatScreen() {
           pronunciation: data.pronunciation,
         },
       ]);
-      if (mode === "voice" || readAloud) speak(data.reply, language);
+      if (inFront.current && (mode === "voice" || readAloud))
+        speak(data.reply, language);
     } catch (e) {
       setError(e.message);
     } finally {

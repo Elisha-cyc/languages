@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { StyleSheet, Text, View, Pressable, ScrollView } from "react-native";
 import { speak, stopSpeaking, voiceReport } from "../speech";
+import { useQuietOnLeave } from "../useQuietOnLeave";
 
 const SAMPLES = {
   French: "Bonjour, comment allez-vous ?",
@@ -28,6 +29,8 @@ const SAMPLES = {
 export default function SpeechCheckScreen() {
   const [report, setReport] = useState(null);
   const [results, setResults] = useState({});
+
+  useQuietOnLeave(stopSpeaking);
 
   useEffect(() => {
     voiceReport().then(setReport);
