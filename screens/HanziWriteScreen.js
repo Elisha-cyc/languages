@@ -1,5 +1,12 @@
 import { useState, useCallback } from "react";
-import { StyleSheet, Text, View, Pressable, ScrollView } from "react-native";
+import {
+  StyleSheet,
+  Text,
+  View,
+  Pressable,
+  ScrollView,
+  Alert,
+} from "react-native";
 import { API_URL, USER_ID } from "../config";
 import HanziWriter from "../components/HanziWriter";
 
@@ -8,15 +15,40 @@ export default function HanziWriteScreen({ navigation, route }) {
   const [index, setIndex] = useState(0);
   const [results, setResults] = useState({}); // char -> mistakes
 
-  const handleResult = useCallback((message) => {
-    if (!message || message.type !== "complete") return;
+ const handleResult = useCallback((message) => {
+  console.log("HANZI RESULT RECEIVED:", message);
+
+  if (!message || message.type !== "complete") return;
+
     const mistakes = Number(message.mistakes) || 0;
-    setResults((current) => ({ ...current, [message.char]: mistakes }));
+
+    setResults((current) => ({
+      ...current,
+      [message.char]: mistakes,
+    }));
+
     fetch(`${API_URL}/hanzi/written`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: USER_ID, char: message.char, mistakes }),
-    }).catch(() => {});
+      body: JSON.stringify({
+        user_id: USER_ID,
+        char: message.char,
+        mistakes,
+      }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Could not save writing result.");
+        }
+
+        console.log("Hanzi writing result saved:", message.char, data);
+      })
+      .catch((error) => {
+        console.error("Hanzi writing save failed:", error);
+        Alert.alert("Save failed", error.message);
+      });
   }, []);
 
   if (index >= chars.length) {

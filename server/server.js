@@ -6,8 +6,10 @@ const { PDFParse } = require("pdf-parse");
 
 const { askTutor, MODES, retellBook, chatTest } = require("./ai");
 const db = require("./database");
+const supabase = require("./supabase");
 const { imageToText, OCR_LANGUAGES } = require("./ocr");
 const { ensureLesson } = require("./lessonmaker");
+
 
 const {
   searchFreeBooks,
@@ -45,31 +47,39 @@ app.get("/", (req, res) => {
   res.send("LinguaApp server is running");
 });
 
-app.use("/chat", require("./chat"));
+app.use("/chat", require("./chat"));0.
 app.use("/hanzi", require("./hanzi"));
 app.use("/speech", require("./speech"));
 
 // ---------- Curriculum ----------
 
 // Get all available languages
-app.get("/languages", (req, res, next) => {
+app.get("/languages", async (req, res, next) => {
   try {
-    const rows = db.prepare("SELECT name FROM languages ORDER BY name").all();
+    const { data, error } = await supabase
+      .from("languages")
+      .select("name")
+      .order("name");
 
-    res.json(rows.map((row) => ({ name: row.name, ready: true })));
+    if (error) throw error;
+
+    res.json(data.map((row) => ({ name: row.name, ready: true })));
   } catch (err) {
     next(err);
   }
 });
 
 // Get all levels
-app.get("/levels", (req, res, next) => {
+app.get("/levels", async (req, res, next) => {
   try {
-    const levels = db
-      .prepare("SELECT id, name, cefr FROM levels ORDER BY position")
-      .all();
+    const { data, error } = await supabase
+      .from("levels")
+      .select("id, name, cefr")
+      .order("position");
 
-    res.json(levels);
+    if (error) throw error;
+
+    res.json(data);
   } catch (err) {
     next(err);
   }
@@ -77,9 +87,9 @@ app.get("/levels", (req, res, next) => {
 
 // Get units for a language and level
 // Example: /units?language=Arabic&level=Beginner&user=1
-app.get("/units", (req, res, next) => {
+app.get("/units", async (req, res, next) => {
   try {
-    const { language, level, user } = req.query;
+    const { language, level } = req.query;
 
     if (!language || !level) {
       return res.status(400).json({
@@ -87,43 +97,79 @@ app.get("/units", (req, res, next) => {
       });
     }
 
-    const rows = db
-      .prepare(
-        `SELECT units.id, units.title,
-                (SELECT COUNT(*)
-                 FROM lessons
-                 WHERE lessons.unit_id = units.id) AS total,
-                (SELECT COUNT(*)
-                 FROM lessons
-                 JOIN progress
-                   ON progress.lesson_id = lessons.id
-                  AND progress.user_id = ?
-                 WHERE lessons.unit_id = units.id) AS done
-         FROM units
-         JOIN languages ON units.language_id = languages.id
-         JOIN levels ON units.level_id = levels.id
-         WHERE languages.name = ?
-           AND levels.name = ?
-         ORDER BY units.position`,
-      )
-      .all(user || 0, language, level);
+    const userId = req.user.id;
 
-    let previousComplete = true;
+    const { data: matchingUnits, error: unitsError } = await supabase
+      .from("units")
+      .select("id, title, position, languages!inner(name), levels!inner(name)")
+      .eq("languages.name", language)
+      .eq("levels.name", level)
+      .order("position");
 
-    const units = rows.map((unit) => {
-      const locked = !previousComplete;
-      previousComplete = unit.done >= unit.total;
+    if (unitsError) throw unitsError;
 
-      return {
-        id: unit.id,
-        title: unit.title,
-        done: unit.done,
-        total: unit.total,
-        locked,
-      };
-    });
+    const units = matchingUnits || [];
+    const unitIds = units.map((unit) => unit.id);
+    let completedLessonIds = new Set();
 
-    res.json(units);
+    if (unitIds.length > 0) {
+      const { data: lessons, error: lessonsError } = await supabase
+        .from("lessons")
+        .select("id, unit_id")
+        .in("unit_id", unitIds);
+
+      if (lessonsError) throw lessonsError;
+
+      const lessonIds = (lessons || []).map((lesson) => lesson.id);
+
+      if (lessonIds.length > 0) {
+        const { data: progress, error: progressError } = await supabase
+          .from("progress")
+          .select("lesson_id")
+          .eq("user_id", userId)
+          .in("lesson_id", lessonIds);
+
+        if (progressError) throw progressError;
+
+        completedLessonIds = new Set(
+          (progress || []).map((item) => item.lesson_id)
+        );
+      }
+
+      const lessonsByUnit = new Map();
+
+      for (const lesson of lessons || []) {
+        if (!lessonsByUnit.has(lesson.unit_id)) {
+          lessonsByUnit.set(lesson.unit_id, []);
+        }
+        lessonsByUnit.get(lesson.unit_id).push(lesson.id);
+      }
+
+      let previousComplete = true;
+
+      const result = units.map((unit) => {
+        const unitLessons = lessonsByUnit.get(unit.id) || [];
+        const total = unitLessons.length;
+        const done = unitLessons.filter((id) =>
+          completedLessonIds.has(id)
+        ).length;
+
+        const locked = !previousComplete;
+        previousComplete = done >= total;
+
+        return {
+          id: unit.id,
+          title: unit.title,
+          done,
+          total,
+          locked,
+        };
+      });
+
+      return res.json(result);
+    }
+
+    return res.json([]);
   } catch (err) {
     next(err);
   }
@@ -131,28 +177,52 @@ app.get("/units", (req, res, next) => {
 
 // Get lessons for a unit
 // Example: /lessons?unit=1&user=1
-app.get("/lessons", (req, res, next) => {
+app.get("/lessons", async (req, res, next) => {
   try {
-    const { unit, user } = req.query;
+    const { unit } = req.query;
 
     if (!unit) {
       return res.status(400).json({ error: "unit is required" });
     }
 
-    const lessons = db
-      .prepare(
-        `SELECT lessons.id, lessons.title,
-                progress.lesson_id IS NOT NULL AS completed
-         FROM lessons
-         LEFT JOIN progress
-           ON progress.lesson_id = lessons.id
-          AND progress.user_id = ?
-         WHERE lessons.unit_id = ?
-         ORDER BY lessons.position`,
-      )
-      .all(user || 0, unit);
+    const unitId = Number(unit);
 
-    res.json(lessons);
+    if (!Number.isInteger(unitId) || unitId <= 0) {
+      return res.status(400).json({ error: "unit must be a positive integer" });
+    }
+
+    const { data: lessons, error: lessonsError } = await supabase
+      .from("lessons")
+      .select("id, title, position")
+      .eq("unit_id", unitId)
+      .order("position");
+
+    if (lessonsError) throw lessonsError;
+
+    const lessonIds = (lessons || []).map((lesson) => lesson.id);
+    let completedIds = new Set();
+
+    if (lessonIds.length > 0) {
+      const { data: progress, error: progressError } = await supabase
+        .from("progress")
+        .select("lesson_id")
+        .eq("user_id", req.user.id)
+        .in("lesson_id", lessonIds);
+
+      if (progressError) throw progressError;
+
+      completedIds = new Set(
+        (progress || []).map((item) => item.lesson_id)
+      );
+    }
+
+    res.json(
+      (lessons || []).map((lesson) => ({
+        id: lesson.id,
+        title: lesson.title,
+        completed: completedIds.has(lesson.id),
+      }))
+    );
   } catch (err) {
     next(err);
   }
@@ -169,13 +239,15 @@ app.get("/lessons/:id/words", async (req, res) => {
   try {
     await ensureLesson(lessonId);
 
-    const words = db
-      .prepare(
-        `SELECT id, word, meaning, pronunciation, focus
-         FROM words
-         WHERE lesson_id = ?`,
-      )
-      .all(lessonId);
+    const { data: words, error: wordsError } = await supabase
+      .from("words")
+      .select("id, word, meaning, pronunciation, focus")
+      .eq("lesson_id", lessonId)
+      .order("id");
+
+    if (wordsError) {
+      throw new Error(`Could not load lesson words: ${wordsError.message}`);
+    }
 
     res.json(words);
   } catch (err) {
@@ -237,7 +309,9 @@ function shuffle(list) {
 }
 
 // Get quiz questions without revealing the answers
-app.get("/lessons/:id/quiz", (req, res, next) => {
+
+ // Get quiz questions without revealing the answers
+app.get("/lessons/:id/quiz", async (req, res, next) => {
   try {
     const lessonId = Number(req.params.id);
 
@@ -245,13 +319,15 @@ app.get("/lessons/:id/quiz", (req, res, next) => {
       return res.status(400).json({ error: "Invalid lesson ID." });
     }
 
-    const words = db
-      .prepare(
-        `SELECT id, word, meaning, pronunciation
-         FROM words
-         WHERE lesson_id = ?`,
-      )
-      .all(lessonId);
+    const { data: words, error } = await supabase
+      .from("words")
+      .select("id, word, meaning, pronunciation")
+      .eq("lesson_id", lessonId)
+      .order("id");
+
+    if (error) {
+      throw new Error(`Could not load quiz words: ${error.message}`);
+    }
 
     const meanings = [...new Set(words.map((word) => word.meaning))];
 
@@ -279,26 +355,39 @@ app.get("/lessons/:id/quiz", (req, res, next) => {
 });
 
 // Grade a quiz and record progress when passed
-app.post("/lessons/:id/quiz", (req, res, next) => {
+app.post("/lessons/:id/quiz", async (req, res, next) => {
   try {
-    const { user_id, answers } = req.body || {};
     const lessonId = Number(req.params.id);
+    const { answers } = req.body || {};
+    const userId = req.user?.id;
 
-    if (!user_id || !Array.isArray(answers)) {
+    if (!Number.isInteger(lessonId) || lessonId < 1) {
+      return res.status(400).json({ error: "Invalid lesson ID." });
+    }
+
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required." });
+    }
+
+    if (!Array.isArray(answers)) {
       return res.status(400).json({
-        error: "user_id and answers are required",
+        error: "answers must be an array",
       });
     }
 
-    const user = db.prepare("SELECT id FROM users WHERE id = ?").get(user_id);
+    const { data: words, error: wordsError } = await supabase
+      .from("words")
+      .select("id, word, meaning")
+      .eq("lesson_id", lessonId)
+      .order("id");
 
-    const words = db
-      .prepare("SELECT id, word, meaning FROM words WHERE lesson_id = ?")
-      .all(lessonId);
+    if (wordsError) {
+      throw new Error(`Could not load quiz words: ${wordsError.message}`);
+    }
 
-    if (!user || words.length === 0) {
+    if (!words || words.length === 0) {
       return res.status(404).json({
-        error: "That user or lesson does not exist",
+        error: "That lesson does not exist or has no quiz words.",
       });
     }
 
@@ -306,17 +395,25 @@ app.post("/lessons/:id/quiz", (req, res, next) => {
 
     for (const answer of answers) {
       if (
-        answer &&
-        answer.wordId !== undefined &&
-        typeof answer.answer === "string"
+        !answer ||
+        !Number.isInteger(answer.wordId) ||
+        typeof answer.answer !== "string" ||
+        given.has(answer.wordId)
       ) {
-        given.set(answer.wordId, answer.answer);
+        return res.status(400).json({
+          error: "Invalid or duplicate answer.",
+        });
       }
+
+      given.set(answer.wordId, answer.answer);
     }
 
-    if (!words.every((word) => given.has(word.id))) {
+    if (
+      given.size !== words.length ||
+      !words.every((word) => given.has(word.id))
+    ) {
       return res.status(400).json({
-        error: "Answer every question",
+        error: "Answer every question exactly once.",
       });
     }
 
@@ -332,10 +429,34 @@ app.post("/lessons/:id/quiz", (req, res, next) => {
     const passed = score / total >= PASS_MARK;
 
     if (passed) {
-      db.prepare(
-        `INSERT OR IGNORE INTO progress (user_id, lesson_id)
-         VALUES (?, ?)`,
-      ).run(user_id, lessonId);
+      const { data: existing, error: readError } = await supabase
+        .from("progress")
+        .select("user_id")
+        .eq("user_id", userId)
+        .eq("lesson_id", lessonId)
+        .limit(1);
+
+      if (readError) {
+        throw new Error(
+          `Could not check progress: ${readError.message}`,
+        );
+      }
+
+      if (!existing || existing.length === 0) {
+        const { error: insertError } = await supabase
+          .from("progress")
+          .insert({
+            user_id: userId,
+            lesson_id: lessonId,
+            completed_at: new Date().toISOString(),
+          });
+
+        if (insertError) {
+          throw new Error(
+            `Could not save progress: ${insertError.message}`,
+          );
+        }
+      }
     }
 
     res.json({ score, total, passed, results });
@@ -343,6 +464,7 @@ app.post("/lessons/:id/quiz", (req, res, next) => {
     next(err);
   }
 });
+
 
 // ---------- AI tutor ----------
 

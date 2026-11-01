@@ -1,4 +1,4 @@
-const db = require("./database");
+const supabase = require("./supabase");
 
 const OPEN_LIBRARY = "https://openlibrary.org";
 const ALLOWED_TEXT_HOSTS = new Set(["www.gutenberg.org", "gutenberg.org"]);
@@ -294,10 +294,26 @@ function browseFreeBooks(languageName) {
 
 // ---------- Wikisource: free texts in many languages ----------
 const WIKISOURCE = {
-  French: "fr", Spanish: "es", German: "de", Italian: "it", Portuguese: "pt",
-  Dutch: "nl", Swedish: "sv", Polish: "pl", Turkish: "tr", Indonesian: "id",
-  Swahili: "sw", Russian: "ru", "Mandarin Chinese": "zh", Japanese: "ja",
-  Korean: "ko", Hindi: "hi", Arabic: "ar", Greek: "el", Hebrew: "he", Thai: "th",
+  French: "fr",
+  Spanish: "es",
+  German: "de",
+  Italian: "it",
+  Portuguese: "pt",
+  Dutch: "nl",
+  Swedish: "sv",
+  Polish: "pl",
+  Turkish: "tr",
+  Indonesian: "id",
+  Swahili: "sw",
+  Russian: "ru",
+  "Mandarin Chinese": "zh",
+  Japanese: "ja",
+  Korean: "ko",
+  Hindi: "hi",
+  Arabic: "ar",
+  Greek: "el",
+  Hebrew: "he",
+  Thai: "th",
 };
 
 function wikiHost(languageName) {
@@ -322,7 +338,9 @@ async function searchWikisource(rawTitle, languageName) {
   });
 
   try {
-    const data = await getJson(`https://${wikiHost(languageName)}/w/api.php?${query}`);
+    const data = await getJson(
+      `https://${wikiHost(languageName)}/w/api.php?${query}`,
+    );
     return ((data.query && data.query.search) || [])
       .filter((item) => item.wordcount >= 300) // skip tiny pages and contents lists
       .slice(0, 8)
@@ -330,7 +348,11 @@ async function searchWikisource(rawTitle, languageName) {
   } catch (err) {
     if (err instanceof BookError && err.status === 400) throw err;
     // A language with no Wikisource, or a network problem: just no results
-    console.error("Wikisource search failed:", languageName, err.cause ? err.cause.code : err.message);
+    console.error(
+      "Wikisource search failed:",
+      languageName,
+      err.cause ? err.cause.code : err.message,
+    );
     return [];
   }
 }
@@ -373,17 +395,25 @@ async function loadWikisource(languageName, pageTitle) {
     format: "json",
     formatversion: "2",
   });
-  const data = await getJson(`https://${wikiHost(languageName)}/w/api.php?${query}`);
+  const data = await getJson(
+    `https://${wikiHost(languageName)}/w/api.php?${query}`,
+  );
 
   const html = data.parse && data.parse.text;
   if (!html) throw new BookError("That text is not available.", 404);
 
   const text = htmlToText(html);
   if (text.length < 300) {
-    throw new BookError("That page has almost no text. Try another result.", 422);
+    throw new BookError(
+      "That page has almost no text. Try another result.",
+      422,
+    );
   }
 
-  const book = { title: data.parse.title || title, sections: splitSections(text) };
+  const book = {
+    title: data.parse.title || title,
+    sections: splitSections(text),
+  };
   cache.set(key, book);
   if (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value);
   return book;

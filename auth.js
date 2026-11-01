@@ -7,7 +7,10 @@ import {
   useCallback,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { API_URL, setNativeLanguage } from "./config";
+import {
+  API_URL,
+  setNativeLanguage as setConfigNativeLanguage,
+} from "./config";
 
 const KEY = "lingua-session";
 let token = null;
@@ -44,7 +47,6 @@ export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }) {
   const [state, setState] = useState({ loading: true, user: null });
-  const [nativeLanguage, setNativeLanguage] = useState("English");
 
 
   const signOutLocal = useCallback(async () => {
@@ -70,7 +72,7 @@ export function AuthProvider({ children }) {
           const res = await fetch(`${API_URL}/auth/me`);
           if (res.ok) {
             const me = await res.json();
-            setNativeLanguage(me.nativeLanguage);
+            setConfigNativeLanguage(me.nativeLanguage);
             setState({ loading: false, user: me });
             return;
           }
@@ -102,7 +104,7 @@ export function AuthProvider({ children }) {
 
     token = data.token;
     await AsyncStorage.setItem(KEY, JSON.stringify({ token }));
-    setNativeLanguage(data.user.nativeLanguage);
+    setConfigNativeLanguage(data.user.nativeLanguage);
     setState({ loading: false, user: data.user });
   }
 
@@ -120,7 +122,7 @@ export function AuthProvider({ children }) {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not save that");
-        setNativeLanguage(data.nativeLanguage);
+        setConfigNativeLanguage(data.nativeLanguage);
         setState((s) => ({
           ...s,
           user: { ...s.user, nativeLanguage: data.nativeLanguage },

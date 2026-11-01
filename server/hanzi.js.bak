@@ -1,0 +1,414 @@
+const express = require("express");
+const supabase = require("./supabase");
+const { LESSONS, TECHNIQUES, ALL_CHARS } = require("./hanzi-data");
+const path = require("path");
+const fs = require("fs");
+
+const router = express.Router();
+const BY_CHAR = new Map(ALL_CHARS.map((item) => [item.char, item]));
+const TEST_TYPES = ["meaning", "pinyin", "strokes"];
+const MIN_TO_TEST = 4;
+
+function shuffle(list) {
+  const copy = [...list];
+
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+
+  return copy;
+}
+
+async function getUser(id) {
+  const n = Number(id);
+
+  if (!Number.isInteger(n)) return null;
+
+  const { data, error } = await supabase
+    .from("users")
+    .select("id")
+    .eq("id", n)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function learnedRows(userId) {
+  const { data, error } = await supabase
+    .from("hanzi_progress")
+    .select("char, correct, wrong")
+    .eq("user_id", userId);
+
+  if (error) throw error;
+
+  return (data || []).filter((row) => BY_CHAR.has(row.char));
+}
+
+function valueFor(item, type) {
+  if (type === "meaning") return item.meaning;
+  if (type === "pinyin") return item.pinyin;
+  return String(item.strokes);
+}
+
+function makeQuestion(item, type) {
+  const correct = valueFor(item, type);
+  let wrong;
+
+  if (type === "strokes") {
+    const n = item.strokes;
+
+    wrong = [n - 2, n - 1, n + 1, n + 2, n + 3]
+      .filter((x) => x >= 1 && x !== n)
+      .map(String);
+  } else {
+    wrong = [
+      ...new Set(ALL_CHARS.map((other) => valueFor(other, type))),
+    ].filter((v) => v !== correct);
+  }
+
+  return {
+    char: item.char,
+    type,
+    options: shuffle([correct, ...shuffle(wrong).slice(0, 3)]),
+  };
+}
+
+async function record(userId, char, correct) {
+  const { error } = await supabase.from("hanzi_progress").upsert(
+    {
+      user_id: userId,
+      char,
+      correct: correct ? 1 : 0,
+      wrong: correct ? 0 : 1,
+    },
+    {
+      onConflict: "user_id,char",
+      ignoreDuplicates: false,
+    },
+  );
+
+  if (error) throw error;
+
+  // The upsert above sets the supplied values, rather than incrementing
+  // existing totals. Use the RPC version introduced in the next step
+  // for atomic score increments.
+}
+
+// ---------- Home: lessons and progress ----------
+router.get("/home", async (req, res) => {
+  try {
+    const user = await getUser(req.query.user);
+
+    if (!user) {
+      return res.status(404).json({ error: "That user does not exist" });
+    }
+
+    const rows = await learnedRows(user.id);
+    const learned = new Set(rows.map((row) => row.char));
+
+    res.json({
+      lessons: LESSONS.map((lesson) => ({
+        id: lesson.id,
+        title: lesson.title,
+        total: lesson.chars.length,
+        learned: lesson.chars.filter((item) => learned.has(item.char)).length,
+      })),
+      learned: rows.length,
+      total: ALL_CHARS.length,
+      mastered: rows.filter(
+        (row) => row.correct >= 3 && row.correct > row.wrong,
+      ).length,
+      review: rows
+        .filter((row) => row.wrong > row.correct)
+        .map((row) => row.char),
+    });
+  } catch (err) {
+    console.error("Hanzi home error:", err);
+    res.status(500).json({ error: "Could not load Hanzi progress." });
+  }
+});
+
+router.get("/lessons/:id", (req, res) => {
+  const lesson = LESSONS.find((item) => item.id === Number(req.params.id));
+
+  if (!lesson) {
+    return res.status(404).json({ error: "Lesson not found" });
+  }
+
+  res.json(lesson);
+});
+
+router.get("/techniques", (req, res) => res.json(TECHNIQUES));
+
+router.post("/learned", async (req, res) => {
+  const { user_id, chars } = req.body || {};
+
+  try {
+    const user = await getUser(user_id);
+
+    if (!user) {
+      return res.status(404).json({ error: "That user does not exist" });
+    }
+
+    if (
+      !Array.isArray(chars) ||
+      chars.length === 0 ||
+      chars.length > 20 ||
+      !chars.every((ch) => BY_CHAR.has(ch))
+    ) {
+      return res.status(400).json({
+        error: "chars must be a short list of known characters",
+      });
+    }
+
+    const rows = [...new Set(chars)].map((char) => ({
+      user_id: user.id,
+      char,
+    }));
+
+    const { error } = await supabase.from("hanzi_progress").upsert(rows, {
+      onConflict: "user_id,char",
+      ignoreDuplicates: true,
+    });
+
+    if (error) throw error;
+
+    res.json({ saved: chars.length });
+  } catch (err) {
+    console.error("Save learned Hanzi error:", err);
+    res.status(500).json({ error: "Could not save learned characters." });
+  }
+});
+
+// ---------- Multiple-choice tests ----------
+router.get("/test", async (req, res) => {
+  try {
+    const user = await getUser(req.query.user);
+
+    if (!user) {
+      return res.status(404).json({ error: "That user does not exist" });
+    }
+
+    const type = req.query.type;
+
+    if (!TEST_TYPES.includes(type)) {
+      return res.status(400).json({
+        error: `type must be one of: ${TEST_TYPES.join(", ")}`,
+      });
+    }
+
+    const count = Math.min(Math.max(Number(req.query.count) || 10, 1), 20);
+    const pool = (await learnedRows(user.id)).map((row) =>
+      BY_CHAR.get(row.char),
+    );
+
+    if (pool.length < MIN_TO_TEST) {
+      return res.status(400).json({
+        error: `Learn at least ${MIN_TO_TEST} characters first: open a lesson and go through every card.`,
+      });
+    }
+
+    res.json(
+      shuffle(pool)
+        .slice(0, count)
+        .map((item) => makeQuestion(item, type)),
+    );
+  } catch (err) {
+    console.error("Hanzi test load error:", err);
+    res.status(500).json({ error: "Could not load the Hanzi test." });
+  }
+});
+
+router.post("/test", async (req, res) => {
+  const { user_id, type, answers } = req.body || {};
+
+  try {
+    const user = await getUser(user_id);
+
+    if (!user) {
+      return res.status(404).json({ error: "That user does not exist" });
+    }
+
+    if (!TEST_TYPES.includes(type)) {
+      return res.status(400).json({ error: "Unknown test type" });
+    }
+
+    if (
+      !Array.isArray(answers) ||
+      answers.length === 0 ||
+      answers.length > 20
+    ) {
+      return res.status(400).json({
+        error: "answers must be a list of 1 to 20 answers",
+      });
+    }
+
+    const results = [];
+
+    for (const a of answers) {
+      const item = a && BY_CHAR.get(a.char);
+
+      if (!item) {
+        return res.status(400).json({
+          error: "Unknown character in the answers",
+        });
+      }
+
+      const expected = valueFor(item, type);
+
+      results.push({
+        char: item.char,
+        pinyin: item.pinyin,
+        meaning: item.meaning,
+        expected,
+        answer: String(a.answer),
+        correct: String(a.answer) === expected,
+      });
+    }
+
+    for (const result of results) {
+      await record(user.id, result.char, result.correct);
+    }
+
+    res.json({
+      score: results.filter((r) => r.correct).length,
+      total: results.length,
+      results,
+    });
+  } catch (err) {
+    console.error("Hanzi test save error:", err);
+    res.status(500).json({ error: "Could not save the test." });
+  }
+});
+
+// ---------- Writing practice ----------
+router.get("/practice", async (req, res) => {
+  try {
+    const user = await getUser(req.query.user);
+
+    if (!user) {
+      return res.status(404).json({ error: "That user does not exist" });
+    }
+
+    const count = Math.min(Math.max(Number(req.query.count) || 5, 1), 10);
+    const rows = await learnedRows(user.id);
+
+    if (rows.length === 0) {
+      return res.status(400).json({
+        error:
+          "Learn a few characters first: open a lesson and go through the cards.",
+      });
+    }
+
+    const ordered = shuffle(rows).sort(
+      (a, b) => b.wrong - b.correct - (a.wrong - a.correct),
+    );
+
+    res.json(
+      ordered.slice(0, count).map((row) => {
+        const item = BY_CHAR.get(row.char);
+
+        return {
+          char: item.char,
+          pinyin: item.pinyin,
+          meaning: item.meaning,
+        };
+      }),
+    );
+  } catch (err) {
+    console.error("Hanzi practice error:", err);
+    res.status(500).json({ error: "Could not load writing practice." });
+  }
+});
+
+router.post("/written", async (req, res) => {
+  const { user_id, char, mistakes } = req.body || {};
+
+  try {
+    const user = await getUser(user_id);
+
+    if (!user) {
+      return res.status(404).json({ error: "That user does not exist" });
+    }
+
+    if (!BY_CHAR.has(char) || !Number.isInteger(mistakes) || mistakes < 0) {
+      return res.status(400).json({ error: "char and mistakes are required" });
+    }
+
+    await record(user.id, char, mistakes === 0);
+    res.json({ saved: true });
+  } catch (err) {
+    console.error("Hanzi writing save error:", err);
+    res.status(500).json({ error: "Could not save writing practice." });
+  }
+});
+
+// ---------- Hanzi Writer ----------
+const WRITER_JS = path.join(
+  __dirname,
+  "node_modules",
+  "hanzi-writer",
+  "dist",
+  "hanzi-writer.min.js",
+);
+const DATA_DIR = path.join(__dirname, "node_modules", "hanzi-writer-data");
+
+router.get("/lib/hanzi-writer.js", (req, res) => {
+  if (!fs.existsSync(WRITER_JS)) {
+    return res
+      .status(404)
+      .type("text")
+      .send(
+        "Missing. In the server folder run: npm install hanzi-writer hanzi-writer-data",
+      );
+  }
+
+  res.set("Cache-Control", "public, max-age=86400");
+  res.type("application/javascript").sendFile(WRITER_JS);
+});
+
+router.get("/data/:file", (req, res) => {
+  const chars = [...String(req.params.file).replace(/\.json$/i, "")];
+
+  if (chars.length !== 1 || !/\p{Script=Han}/u.test(chars[0])) {
+    return res
+      .status(400)
+      .json({ error: "One Chinese character is required." });
+  }
+
+  const file = path.join(DATA_DIR, `${chars[0]}.json`);
+
+  if (!fs.existsSync(file)) {
+    return res
+      .status(404)
+      .json({ error: "No stroke data for that character." });
+  }
+
+  res.set("Cache-Control", "public, max-age=86400");
+  res.type("application/json").sendFile(file);
+});
+
+router.get("/writer", (req, res) => {
+  const chars = [...String(req.query.char || "")];
+
+  if (chars.length !== 1 || !/\p{Script=Han}/u.test(chars[0])) {
+    return res.status(400).send("One Chinese character is required.");
+  }
+
+  const mode = req.query.mode === "quiz" ? "quiz" : "animate";
+  const outline = req.query.outline === "0" ? false : true;
+  const size = Math.min(Math.max(Number(req.query.size) || 260, 120), 500);
+
+  res.type("html").send(writerPage({ char: chars[0], mode, outline, size }));
+});
+
+function writerPage(config) {
+  // Keep your existing writerPage function body here, unchanged.
+  // Copy it from your current hanzi.js, beginning at:
+  // return `<!doctype html>
+  // and ending at the closing backtick and brace.
+}
+
+module.exports = router;

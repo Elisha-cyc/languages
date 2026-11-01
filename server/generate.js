@@ -92,7 +92,7 @@ async function main() {
 
       const result = await generateWithRetry({
         language,
-        nativeLanguage: "English",
+        nativeLanguage: nativeLanguage,
         level,
         cefr: lesson.cefr,
         unit: lesson.unit,

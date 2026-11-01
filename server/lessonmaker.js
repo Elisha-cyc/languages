@@ -1,90 +1,195 @@
-const db = require("./database");
+﻿"use strict";
+
+const supabase = require("./supabase");
 const { generateLesson } = require("./ai");
-const { LESSONS_PER_UNIT, PRONUNCIATION_GUIDE } = require("./curriculum");
+const {
+  LESSONS_PER_UNIT,
+  PRONUNCIATION_GUIDE,
+} = require("./curriculum");
 
-const pending = new Map(); // lessons being generated right now, so two requests share one AI call
+const pending = new Map();
 
-function saveLesson(lessonId, title, words) {
-  db.exec("BEGIN");
-  try {
-    db.prepare(
-      "UPDATE lessons SET title = ?, status = 'ready', format = 'sentences' WHERE id = ?",
-    ).run(title, lessonId);
-    const add = db.prepare(
-      "INSERT INTO words (lesson_id, word, meaning, pronunciation, focus) VALUES (?, ?, ?, ?, ?)",
+function throwIfError(error, context) {
+  if (error) {
+    throw new Error(`${context}: ${error.message}`);
+  }
+}
+
+async function saveLesson(lessonId, title, words) {
+  if (!Array.isArray(words) || words.length === 0) {
+    throw new Error("The generated lesson contains no words.");
+  }
+
+  const wordRows = words.map((word) => ({
+    lesson_id: lessonId,
+    word: word.word,
+    meaning: word.meaning,
+    pronunciation: word.pronunciation || null,
+    focus: word.focus || null,
+  }));
+
+  if (
+    wordRows.some(
+      (word) =>
+        typeof word.word !== "string" ||
+        !word.word.trim() ||
+        typeof word.meaning !== "string" ||
+        !word.meaning.trim(),
+    )
+  ) {
+    throw new Error("The generated lesson contains invalid words.");
+  }
+
+  const { data: existingWords, error: readError } = await supabase
+    .from("words")
+    .select("id")
+    .eq("lesson_id", lessonId);
+
+  throwIfError(readError, "Could not check existing lesson words");
+
+  if (existingWords.length > 0) {
+    throw new Error(
+      "This lesson already has saved words; refusing to create duplicates.",
     );
-    for (const w of words) {
-      add.run(
-        lessonId,
-        w.word,
-        w.meaning,
-        w.pronunciation || null,
-        w.focus || null,
+  }
+
+  const { data: updatedLesson, error: updateError } = await supabase
+    .from("lessons")
+    .update({
+      title,
+      status: "ready",
+      format: "sentences",
+    })
+    .eq("id", lessonId)
+    .select("id")
+    .maybeSingle();
+
+  throwIfError(updateError, "Could not update lesson");
+
+  if (!updatedLesson) {
+    throw new Error("Lesson not found");
+  }
+
+  const { error: insertError } = await supabase
+    .from("words")
+    .insert(wordRows);
+
+  if (insertError) {
+    // Best-effort recovery: restore the lesson's empty status.
+    // Supabase JS does not make these two writes one transaction.
+    const { error: rollbackError } = await supabase
+      .from("lessons")
+      .update({ status: "empty" })
+      .eq("id", lessonId);
+
+    if (rollbackError) {
+      console.error(
+        "Could not restore lesson status after word insert failure:",
+        rollbackError.message,
       );
     }
-    db.exec("COMMIT");
-  } catch (err) {
-    db.exec("ROLLBACK");
-    throw err;
+
+    throw new Error(`Could not save lesson words: ${insertError.message}`);
   }
 }
 
 async function makeLesson(lessonId) {
-  const lesson = db
-    .prepare(
-      `SELECT lessons.id, lessons.status, lessons.position, lessons.unit_id,
-              units.title AS unit, languages.name AS language,
-              levels.name AS level, levels.cefr AS cefr
-       FROM lessons
-       JOIN units ON units.id = lessons.unit_id
-       JOIN languages ON languages.id = units.language_id
-       JOIN levels ON levels.id = units.level_id
-       WHERE lessons.id = ?`,
-    )
-    .get(lessonId);
+  const { data: lesson, error: lessonError } = await supabase
+    .from("lessons")
+    .select(`
+      id,
+      status,
+      position,
+      unit_id,
+      units!inner (
+        title,
+        language_id,
+        level_id,
+        languages!inner (name),
+        levels!inner (name, cefr)
+      )
+    `)
+    .eq("id", lessonId)
+    .maybeSingle();
 
-  if (!lesson) throw new Error("Lesson not found");
-  if (lesson.status === "ready") return "ready";
+  throwIfError(lessonError, "Could not load lesson");
 
-  const previousTitles = db
-    .prepare(
-      "SELECT title FROM lessons WHERE unit_id = ? AND status = 'ready' ORDER BY position",
-    )
-    .all(lesson.unit_id)
-    .map((row) => row.title);
+  if (!lesson) {
+    throw new Error("Lesson not found");
+  }
+
+  if (lesson.status === "ready") {
+    return "ready";
+  }
+
+  const unit = lesson.units;
+  const language = unit.languages.name;
+  const level = unit.levels.name;
+
+  const { data: previousLessons, error: previousError } = await supabase
+    .from("lessons")
+    .select("title")
+    .eq("unit_id", lesson.unit_id)
+    .eq("status", "ready")
+    .order("position");
+
+  throwIfError(previousError, "Could not load previous lessons");
 
   const request = {
-    language: lesson.language,
+    language,
     nativeLanguage: process.env.NATIVE_LANGUAGE || "English",
-    level: lesson.level,
-    cefr: lesson.cefr,
-    unit: lesson.unit,
+    level,
+    cefr: unit.levels.cefr,
+    unit: unit.title,
     number: lesson.position,
     total: LESSONS_PER_UNIT,
-    previousTitles,
-    pronunciationGuide: PRONUNCIATION_GUIDE[lesson.language],
+    previousTitles: previousLessons.map((row) => row.title),
+    pronunciationGuide: PRONUNCIATION_GUIDE[language],
   };
 
-  // The AI sometimes returns a lesson in the wrong shape, so try twice
   let made;
   let lastError;
+
   for (let attempt = 1; attempt <= 2 && !made; attempt++) {
     try {
       made = await generateLesson(request);
+
+      if (
+        !made ||
+        typeof made.title !== "string" ||
+        !made.title.trim() ||
+        !Array.isArray(made.words) ||
+        made.words.length === 0
+      ) {
+        throw new Error("AI returned an invalid lesson structure");
+      }
     } catch (err) {
       lastError = err;
-      if (String(err.message).startsWith("429")) throw err; // busy: do not retry
+
+      if (String(err.message).startsWith("429")) {
+        throw err;
+      }
     }
   }
-  if (!made) throw lastError;
 
-  saveLesson(lessonId, made.title, made.words);
+  if (!made) {
+    throw lastError || new Error("Could not generate lesson");
+  }
+
+  await saveLesson(lessonId, made.title, made.words);
+
   return "ready";
 }
 
 function ensureLesson(lessonId) {
-  if (pending.has(lessonId)) return pending.get(lessonId);
-  const job = makeLesson(lessonId).finally(() => pending.delete(lessonId));
+  if (pending.has(lessonId)) {
+    return pending.get(lessonId);
+  }
+
+  const job = makeLesson(lessonId).finally(() => {
+    pending.delete(lessonId);
+  });
+
   pending.set(lessonId, job);
   return job;
 }

@@ -13,7 +13,7 @@ export const API_URL =
 
 export const USER_ID = 1;
 
-export let NATIVE_LANGUAGE = "English";
+export let NATIVE_LANGUAGE = "";
 
 export function setNativeLanguage(language) {
   if (typeof language === "string" && language) {

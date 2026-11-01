@@ -1,470 +1,776 @@
 const express = require("express");
-const db = require("./database");
+const supabase = require("./supabase");
 const { extractVocabulary } = require("./ai");
 const { LANGUAGES, PRONUNCIATION_GUIDE } = require("./curriculum");
 
 const router = express.Router();
 
-const MIN_WORDS = 8; // 4 replayed + 4 not replayed
-const MAX_WORDS = 16; // 8 replayed + 8 not replayed
+const MIN_WORDS = 8;
+const MAX_WORDS = 16;
 const MIN_WORDS_AFTER_REMOVING = 6;
 const RECENT_LESSONS = 4;
-const MIN_TEXT = 150; // characters
+const MIN_TEXT = 150;
 const MAX_TEXT = 6000;
-const MAX_TEXT_SESSIONS_PER_DAY = 5; // each one uses AI tokens
+const MAX_TEXT_SESSIONS_PER_DAY = 5;
+const DEFAULT_NATIVE_LANGUAGE = "English";
+
+// ---------- Helpers ----------
 
 function shuffle(list) {
   const copy = [...list];
+
   for (let i = copy.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
+
   return copy;
 }
 
-function getSession(id, userId) {
-  if (!Number.isInteger(id) || !Number.isInteger(userId)) return null;
-  return db
-    .prepare("SELECT * FROM sleep_sessions WHERE id = ? AND user_id = ?")
-    .get(id, userId);
+function validId(value) {
+  return Number.isInteger(value) && value > 0;
 }
 
-function sessionWords(sessionId) {
-  return db
-    .prepare(
-      `SELECT id, word, meaning, pronunciation, cued, evening_correct
-       FROM sleep_items
-       WHERE session_id = ?`,
-    )
-    .all(sessionId);
+async function getUser(userId) {
+  const { data, error } = await supabase
+    .from("users")
+    .select("id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
 }
 
-// Multiple-choice questions for every word, with no answers and no cued flags
+async function getSession(id, userId) {
+  if (!validId(id) || !validId(userId)) return null;
+
+  const { data, error } = await supabase
+    .from("sleep_sessions")
+    .select("*")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function sessionWords(sessionId) {
+  const { data, error } = await supabase
+    .from("sleep_items")
+    .select("id, word, meaning, pronunciation, cued, evening_correct")
+    .eq("session_id", sessionId)
+    .order("id", { ascending: true });
+
+  if (error) throw error;
+  return data || [];
+}
+
 function makeQuestions(words) {
   const meanings = [...new Set(words.map((w) => w.meaning))];
 
-  return shuffle(words).map((w) => {
-    const wrong = shuffle(meanings.filter((m) => m !== w.meaning)).slice(0, 3);
+  return shuffle(words).map((word) => {
+    const wrong = shuffle(
+      meanings.filter((meaning) => meaning !== word.meaning),
+    ).slice(0, 3);
+
     return {
-      wordId: w.id,
-      prompt: w.word,
-      pronunciation: w.pronunciation,
-      options: shuffle([w.meaning, ...wrong]),
+      wordId: word.id,
+      prompt: word.word,
+      pronunciation: word.pronunciation,
+      options: shuffle([word.meaning, ...wrong]),
     };
   });
 }
 
-// Grades answers in the same order as `words`. Returns null if any question is unanswered.
 function grade(words, answers) {
   if (!Array.isArray(answers)) return null;
 
   const given = new Map();
-  for (const a of answers) given.set(a.wordId, a.answer);
-  if (!words.every((w) => given.has(w.id))) return null;
 
-  return words.map((w) => ({
-    wordId: w.id,
-    word: w.word,
-    correctAnswer: w.meaning,
-    correct: given.get(w.id) === w.meaning,
-    cued: w.cued === 1,
+  for (const answer of answers) {
+    if (!answer || answer.wordId === undefined) continue;
+    given.set(answer.wordId, answer.answer);
+  }
+
+  if (!words.every((word) => given.has(word.id))) {
+    return null;
+  }
+
+  return words.map((word) => ({
+    wordId: word.id,
+    word: word.word,
+    correctAnswer: word.meaning,
+    correct: given.get(word.id) === word.meaning,
+    cued: Number(word.cued) === 1,
   }));
 }
 
-// Saves a session. Half of the words are replayed during sleep, half are not.
-function createSession(userId, language, source, label, items) {
+async function createSession(userId, language, source, label, items) {
   const chosen = shuffle(items).slice(0, MAX_WORDS);
   const half = Math.floor(chosen.length / 2);
   const used = chosen.slice(0, half * 2);
 
-  db.exec("BEGIN");
-  try {
-    const result = db
-      .prepare(
-        "INSERT INTO sleep_sessions (user_id, language, source, label) VALUES (?, ?, ?, ?)",
-      )
-      .run(userId, language, source, label);
-    const sessionId = Number(result.lastInsertRowid);
+  const sessionItems = used.map((item, index) => ({
+    word: item.word,
+    meaning: item.meaning,
+    pronunciation: item.pronunciation || null,
+    cued: index < half ? 1 : 0,
+  }));
 
-    const add = db.prepare(
-      `INSERT INTO sleep_items (session_id, word, meaning, pronunciation, cued)
-       VALUES (?, ?, ?, ?, ?)`,
-    );
-    used.forEach((item, index) =>
-      add.run(
-        sessionId,
-        item.word,
-        item.meaning,
-        item.pronunciation || null,
-        index < half ? 1 : 0,
-      ),
-    );
+  const { data, error } = await supabase.rpc("create_sleep_session", {
+    p_user_id: userId,
+    p_language: language,
+    p_source: source,
+    p_label: label,
+    p_items: sessionItems,
+  });
 
-    db.exec("COMMIT");
-    return sessionId;
-  } catch (err) {
-    db.exec("ROLLBACK");
-    throw err;
+  if (error) throw error;
+
+  const sessionId = Number(data);
+
+  if (!validId(sessionId)) {
+    throw new Error("Supabase did not return a valid sleep session ID.");
   }
+
+  return sessionId;
 }
 
-// ---------- Source 1: our lessons ----------
-// Prepare tonight's session from the words the user passed most recently
-router.post("/sessions", (req, res) => {
-  const { user_id, language } = req.body;
-  if (!user_id || !language) {
-    return res.status(400).json({ error: "user_id and language are required" });
-  }
+// ---------- Source 1: Our lessons ----------
 
-  const user = db.prepare("SELECT id FROM users WHERE id = ?").get(user_id);
-  if (!user) return res.status(404).json({ error: "That user does not exist" });
-
-  const lessonIds = db
-    .prepare(
-      `SELECT lessons.id
-       FROM lessons
-       JOIN progress ON progress.lesson_id = lessons.id AND progress.user_id = ?
-       JOIN units ON units.id = lessons.unit_id
-       JOIN languages ON languages.id = units.language_id
-       WHERE languages.name = ?
-       ORDER BY progress.completed_at DESC
-       LIMIT ${RECENT_LESSONS}`,
-    )
-    .all(user_id, language)
-    .map((row) => row.id);
-
-  const needMore = `Pass a few more ${language} lessons first. This source uses words you have just learned.`;
-  if (lessonIds.length === 0) return res.status(400).json({ error: needMore });
-
-  const marks = lessonIds.map(() => "?").join(",");
-  const items = db
-    .prepare(
-      `SELECT word, meaning, pronunciation FROM words WHERE lesson_id IN (${marks})`,
-    )
-    .all(...lessonIds);
-
-  if (items.length < MIN_WORDS)
-    return res.status(400).json({ error: needMore });
-
+router.post("/sessions", async (req, res) => {
   try {
-    const sessionId = createSession(user_id, language, "lessons", null, items);
-    res.status(201).json({ sessionId, language });
+    const { user_id, language } = req.body || {};
+
+    if (!validId(user_id) || !language) {
+      return res.status(400).json({
+        error: "user_id and language are required",
+      });
+    }
+
+    const user = await getUser(user_id);
+
+    if (!user) {
+      return res.status(404).json({
+        error: "That user does not exist",
+      });
+    }
+
+    const needMore = `Pass a few more ${language} lessons first. This source uses words you have just learned.`;
+
+    // Fetch completed progress. Filter by language before selecting the newest
+    // matching lessons so unrelated courses do not hide eligible lessons.
+    const { data: progress, error: progressError } = await supabase
+      .from("progress")
+      .select("lesson_id, completed_at")
+      .eq("user_id", user_id)
+      .order("completed_at", { ascending: false });
+
+    if (progressError) throw progressError;
+
+    const allLessonIds = [
+      ...new Set((progress || []).map((row) => row.lesson_id)),
+    ];
+
+    if (allLessonIds.length === 0) {
+      return res.status(400).json({ error: needMore });
+    }
+
+    const { data: lessons, error: lessonsError } = await supabase
+      .from("lessons")
+      .select("id, unit_id")
+      .in("id", allLessonIds);
+
+    if (lessonsError) throw lessonsError;
+
+    const unitIds = [
+      ...new Set((lessons || []).map((lesson) => lesson.unit_id)),
+    ];
+
+    if (unitIds.length === 0) {
+      return res.status(400).json({ error: needMore });
+    }
+
+    const { data: units, error: unitsError } = await supabase
+      .from("units")
+      .select("id, language_id")
+      .in("id", unitIds);
+
+    if (unitsError) throw unitsError;
+
+    const languageIds = [
+      ...new Set((units || []).map((unit) => unit.language_id)),
+    ];
+
+    if (languageIds.length === 0) {
+      return res.status(400).json({ error: needMore });
+    }
+
+    const { data: languages, error: languagesError } = await supabase
+      .from("languages")
+      .select("id, name")
+      .in("id", languageIds);
+
+    if (languagesError) throw languagesError;
+
+    const matchingLanguageIds = new Set(
+      (languages || [])
+        .filter((item) => item.name === language)
+        .map((item) => item.id),
+    );
+
+    const matchingUnitIds = new Set(
+      (units || [])
+        .filter((unit) => matchingLanguageIds.has(unit.language_id))
+        .map((unit) => unit.id),
+    );
+
+    const matchingLessonIds = (progress || [])
+      .filter((row) => {
+        const lesson = (lessons || []).find(
+          (item) => item.id === row.lesson_id,
+        );
+
+        return lesson && matchingUnitIds.has(lesson.unit_id);
+      })
+      .slice(0, RECENT_LESSONS)
+      .map((row) => row.lesson_id);
+
+    if (matchingLessonIds.length === 0) {
+      return res.status(400).json({ error: needMore });
+    }
+
+    const { data: items, error: wordsError } = await supabase
+      .from("words")
+      .select("word, meaning, pronunciation")
+      .in("lesson_id", matchingLessonIds);
+
+    if (wordsError) throw wordsError;
+
+    if (!items || items.length < MIN_WORDS) {
+      return res.status(400).json({ error: needMore });
+    }
+
+    const sessionId = await createSession(
+      user_id,
+      language,
+      "lessons",
+      null,
+      items,
+    );
+
+    return res.status(201).json({ sessionId, language });
   } catch (err) {
     console.error("Sleep session error:", err);
-    res.status(500).json({ error: "Could not prepare the session." });
+
+    return res.status(500).json({
+      error: "Could not prepare the session.",
+    });
   }
 });
 
-// ---------- Sources 2 and 3: a book, or the user's own text ----------
+// ---------- Sources 2 and 3: A book or user's own text ----------
+
 router.post("/sessions/from-text", async (req, res) => {
-  const { user_id, language, text, label } = req.body;
-  if (!user_id || !language || typeof text !== "string") {
-    return res
-      .status(400)
-      .json({ error: "user_id, language and text are required" });
-  }
-  if (!LANGUAGES.includes(language)) {
-    return res
-      .status(400)
-      .json({
+  try {
+    const { user_id, language, text, label, native_language } = req.body || {};
+
+    if (!validId(user_id) || !language || typeof text !== "string") {
+      return res.status(400).json({
+        error: "user_id, language and text are required",
+      });
+    }
+
+    if (!LANGUAGES.includes(language)) {
+      return res.status(400).json({
         error: `Choose one of these languages: ${LANGUAGES.join(", ")}`,
       });
-  }
+    }
 
-  const user = db.prepare("SELECT id FROM users WHERE id = ?").get(user_id);
-  if (!user) return res.status(404).json({ error: "That user does not exist" });
+    const user = await getUser(user_id);
 
-  const clean = text.replace(/\s+/g, " ").trim();
-  if (clean.length < MIN_TEXT) {
-    return res
-      .status(400)
-      .json({ error: "That text is too short. Use a few full sentences." });
-  }
-  if (clean.length > MAX_TEXT) {
-    return res
-      .status(400)
-      .json({ error: "That text is too long. Use one part at a time." });
-  }
+    if (!user) {
+      return res.status(404).json({
+        error: "That user does not exist",
+      });
+    }
 
-  // Each text session costs AI tokens, so there is a daily limit
-  const today = db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM sleep_sessions
-       WHERE user_id = ? AND source = 'text' AND created_at > datetime('now', '-1 day')`,
-    )
-    .get(user_id).n;
-  if (today >= MAX_TEXT_SESSIONS_PER_DAY) {
-    return res
-      .status(429)
-      .json({
+    const clean = text.replace(/\s+/g, " ").trim();
+
+    if (clean.length < MIN_TEXT) {
+      return res.status(400).json({
+        error: "That text is too short. Use a few full sentences.",
+      });
+    }
+
+    if (clean.length > MAX_TEXT) {
+      return res.status(400).json({
+        error: "That text is too long. Use one part at a time.",
+      });
+    }
+
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const { count, error: countError } = await supabase
+      .from("sleep_sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user_id)
+      .eq("source", "text")
+      .gte("created_at", since);
+
+    if (countError) throw countError;
+
+    if ((count || 0) >= MAX_TEXT_SESSIONS_PER_DAY) {
+      return res.status(429).json({
         error:
           "You have made enough text sessions for today. Try again tomorrow.",
       });
-  }
+    }
 
-  let items;
-  try {
-    items = await extractVocabulary({
-      text: clean,
-      language,
-      count: MAX_WORDS,
-      pronunciationGuide: PRONUNCIATION_GUIDE[language],
-    });
-  } catch (err) {
-    console.error("Vocabulary error:", err.message);
-    if (err.message.startsWith("429")) {
-      return res
-        .status(429)
-        .json({
+    const nativeLanguage =
+      typeof native_language === "string" && native_language.trim()
+        ? native_language.trim()
+        : DEFAULT_NATIVE_LANGUAGE;
+
+    let items;
+
+    try {
+      items = await extractVocabulary({
+        text: clean,
+        language,
+        nativeLanguage,
+        count: MAX_WORDS,
+        pronunciationGuide: PRONUNCIATION_GUIDE[language],
+      });
+    } catch (err) {
+      console.error("Vocabulary error:", err.message);
+
+      if (err.message.startsWith("429")) {
+        return res.status(429).json({
           error: "The AI is very busy right now. Try again in a few minutes.",
         });
-    }
-    return res
-      .status(502)
-      .json({
+      }
+
+      return res.status(502).json({
         error: "The AI could not pick words from that text. Try again.",
       });
-  }
+    }
 
-  if (items.length < MIN_WORDS) {
-    return res.status(422).json({
-      error:
-        "Could not find enough usable words in that text. Try a longer or different passage.",
-    });
-  }
+    if (!Array.isArray(items) || items.length < MIN_WORDS) {
+      return res.status(422).json({
+        error:
+          "Could not find enough usable words in that text. Try a longer or different passage.",
+      });
+    }
 
-  try {
     const cleanLabel =
       typeof label === "string" ? label.trim().slice(0, 120) : null;
-    const sessionId = createSession(
+
+    const sessionId = await createSession(
       user_id,
       language,
       "text",
       cleanLabel || null,
       items,
     );
-    res.status(201).json({ sessionId, language });
+
+    return res.status(201).json({ sessionId, language });
   } catch (err) {
-    console.error("Sleep session error:", err);
-    res.status(500).json({ error: "Could not prepare the session." });
+    console.error("Sleep text session error:", err);
+
+    return res.status(500).json({
+      error: "Could not prepare the session.",
+    });
   }
 });
 
-// One session with its words: /sleep/sessions/3?user=1
-router.get("/sessions/:id", (req, res) => {
-  const session = getSession(Number(req.params.id), Number(req.query.user));
-  if (!session) return res.status(404).json({ error: "Session not found." });
+// ---------- Get one session ----------
 
-  res.json({
-    id: session.id,
-    language: session.language,
-    source: session.source,
-    label: session.label,
-    tested: session.tested_at !== null,
-    words: shuffle(sessionWords(session.id)),
-  });
-});
-
-// Remove a word that looks wrong, before the evening quiz
-router.delete("/sessions/:id/items/:itemId", (req, res) => {
-  const session = getSession(Number(req.params.id), Number(req.query.user));
-  if (!session) return res.status(404).json({ error: "Session not found." });
-  if (session.tested_at) {
-    return res.status(409).json({ error: "This session is already finished." });
-  }
-
-  const words = sessionWords(session.id);
-  if (words.some((w) => w.evening_correct !== null)) {
-    return res
-      .status(409)
-      .json({ error: "Words can only be removed before the evening quiz." });
-  }
-  if (words.length <= MIN_WORDS_AFTER_REMOVING) {
-    return res
-      .status(400)
-      .json({ error: `Keep at least ${MIN_WORDS_AFTER_REMOVING} words.` });
-  }
-
-  const result = db
-    .prepare("DELETE FROM sleep_items WHERE id = ? AND session_id = ?")
-    .run(Number(req.params.itemId), session.id);
-  if (result.changes === 0)
-    return res.status(404).json({ error: "Word not found." });
-
-  res.json({ removed: true });
-});
-
-// ---------- Evening quiz: a starting score for every word ----------
-
-router.get("/sessions/:id/evening", (req, res) => {
-  const session = getSession(Number(req.params.id), Number(req.query.user));
-  if (!session) return res.status(404).json({ error: "Session not found." });
-  if (session.tested_at) {
-    return res.status(409).json({ error: "This session is already finished." });
-  }
-
-  const words = sessionWords(session.id);
-  if (words.some((w) => w.evening_correct !== null)) {
-    return res
-      .status(409)
-      .json({ error: "You already took the evening quiz for this session." });
-  }
-
-  res.json(makeQuestions(words));
-});
-
-router.post("/sessions/:id/evening", (req, res) => {
-  const { user_id, answers } = req.body;
-  const session = getSession(Number(req.params.id), Number(user_id));
-  if (!session) return res.status(404).json({ error: "Session not found." });
-  if (session.tested_at) {
-    return res.status(409).json({ error: "This session is already finished." });
-  }
-
-  const words = sessionWords(session.id);
-  if (words.some((w) => w.evening_correct !== null)) {
-    return res
-      .status(409)
-      .json({ error: "You already took the evening quiz for this session." });
-  }
-
-  const graded = grade(words, answers);
-  if (!graded) return res.status(400).json({ error: "Answer every question" });
-
-  db.exec("BEGIN");
+router.get("/sessions/:id", async (req, res) => {
   try {
-    const mark = db.prepare(
-      "UPDATE sleep_items SET evening_correct = ? WHERE session_id = ? AND id = ?",
+    const session = await getSession(
+      Number(req.params.id),
+      Number(req.query.user),
     );
-    for (const g of graded) mark.run(g.correct ? 1 : 0, session.id, g.wordId);
-    db.exec("COMMIT");
-  } catch (err) {
-    db.exec("ROLLBACK");
-    console.error("Evening quiz error:", err);
-    return res.status(500).json({ error: "Could not save the quiz." });
-  }
 
-  res.json({
-    score: graded.filter((g) => g.correct).length,
-    total: graded.length,
-    missed: graded
-      .filter((g) => !g.correct)
-      .map((g) => ({
-        wordId: g.wordId,
-        word: g.word,
-        correctAnswer: g.correctAnswer,
-      })),
-  });
+    if (!session) {
+      return res.status(404).json({ error: "Session not found." });
+    }
+
+    const words = await sessionWords(session.id);
+
+    return res.json({
+      id: session.id,
+      language: session.language,
+      source: session.source,
+      label: session.label,
+      tested: session.tested_at !== null,
+      words: shuffle(words),
+    });
+  } catch (err) {
+    console.error("Get sleep session error:", err);
+
+    return res.status(500).json({
+      error: "Could not load the session.",
+    });
+  }
+});
+
+// ---------- Remove a word before the evening quiz ----------
+
+router.delete("/sessions/:id/items/:itemId", async (req, res) => {
+  try {
+    const session = await getSession(
+      Number(req.params.id),
+      Number(req.query.user),
+    );
+
+    if (!session) {
+      return res.status(404).json({ error: "Session not found." });
+    }
+
+    if (session.tested_at !== null) {
+      return res.status(409).json({
+        error: "This session is already finished.",
+      });
+    }
+
+    const words = await sessionWords(session.id);
+
+    if (words.some((word) => word.evening_correct !== null)) {
+      return res.status(409).json({
+        error: "Words can only be removed before the evening quiz.",
+      });
+    }
+
+    if (words.length <= MIN_WORDS_AFTER_REMOVING) {
+      return res.status(400).json({
+        error: `Keep at least ${MIN_WORDS_AFTER_REMOVING} words.`,
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("sleep_items")
+      .delete()
+      .eq("id", Number(req.params.itemId))
+      .eq("session_id", session.id)
+      .select("id");
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({ error: "Word not found." });
+    }
+
+    return res.json({ removed: true });
+  } catch (err) {
+    console.error("Remove sleep word error:", err);
+
+    return res.status(500).json({
+      error: "Could not remove the word.",
+    });
+  }
+});
+
+// ---------- Evening quiz: starting score ----------
+
+router.get("/sessions/:id/evening", async (req, res) => {
+  try {
+    const session = await getSession(
+      Number(req.params.id),
+      Number(req.query.user),
+    );
+
+    if (!session) {
+      return res.status(404).json({ error: "Session not found." });
+    }
+
+    if (session.tested_at !== null) {
+      return res.status(409).json({
+        error: "This session is already finished.",
+      });
+    }
+
+    const words = await sessionWords(session.id);
+
+    if (words.some((word) => word.evening_correct !== null)) {
+      return res.status(409).json({
+        error: "You already took the evening quiz for this session.",
+      });
+    }
+
+    return res.json(makeQuestions(words));
+  } catch (err) {
+    console.error("Get evening quiz error:", err);
+
+    return res.status(500).json({
+      error: "Could not load the evening quiz.",
+    });
+  }
+});
+
+router.post("/sessions/:id/evening", async (req, res) => {
+  try {
+    const { user_id, answers } = req.body || {};
+
+    const session = await getSession(Number(req.params.id), Number(user_id));
+
+    if (!session) {
+      return res.status(404).json({ error: "Session not found." });
+    }
+
+    if (session.tested_at !== null) {
+      return res.status(409).json({
+        error: "This session is already finished.",
+      });
+    }
+
+    const words = await sessionWords(session.id);
+
+    if (words.some((word) => word.evening_correct !== null)) {
+      return res.status(409).json({
+        error: "You already took the evening quiz for this session.",
+      });
+    }
+
+    const graded = grade(words, answers);
+
+    if (!graded) {
+      return res.status(400).json({
+        error: "Answer every question",
+      });
+    }
+
+    const results = graded.map((item) => ({
+      item_id: item.wordId,
+      is_correct: item.correct,
+    }));
+
+    const { data, error } = await supabase.rpc("save_sleep_evening_quiz", {
+      p_session_id: session.id,
+      p_result: results,
+    });
+
+    if (error) throw error;
+
+    if (data !== true) {
+      return res.status(409).json({
+        error:
+          "The evening quiz could not be saved. The session may already have been updated.",
+      });
+    }
+
+    return res.json({
+      score: graded.filter((item) => item.correct).length,
+      total: graded.length,
+      missed: graded
+        .filter((item) => !item.correct)
+        .map((item) => ({
+          wordId: item.wordId,
+          word: item.word,
+          correctAnswer: item.correctAnswer,
+        })),
+    });
+  } catch (err) {
+    console.error("Evening quiz error:", err);
+
+    return res.status(500).json({
+      error: "Could not save the quiz.",
+    });
+  }
 });
 
 // ---------- Morning test ----------
 
-router.get("/sessions/:id/test", (req, res) => {
-  const session = getSession(Number(req.params.id), Number(req.query.user));
-  if (!session) return res.status(404).json({ error: "Session not found." });
-  if (session.tested_at) {
-    return res
-      .status(409)
-      .json({ error: "You already took the test for this session." });
-  }
+router.get("/sessions/:id/test", async (req, res) => {
+  try {
+    const session = await getSession(
+      Number(req.params.id),
+      Number(req.query.user),
+    );
 
-  res.json(makeQuestions(sessionWords(session.id)));
+    if (!session) {
+      return res.status(404).json({ error: "Session not found." });
+    }
+
+    if (session.tested_at !== null) {
+      return res.status(409).json({
+        error: "You already took the test for this session.",
+      });
+    }
+
+    const words = await sessionWords(session.id);
+
+    return res.json(makeQuestions(words));
+  } catch (err) {
+    console.error("Get morning test error:", err);
+
+    return res.status(500).json({
+      error: "Could not load the morning test.",
+    });
+  }
 });
 
-router.post("/sessions/:id/test", (req, res) => {
-  const { user_id, answers, sleep_quality, cues_woke_me } = req.body;
-  const session = getSession(Number(req.params.id), Number(user_id));
-  if (!session) return res.status(404).json({ error: "Session not found." });
-  if (session.tested_at) {
-    return res
-      .status(409)
-      .json({ error: "You already took the test for this session." });
+router.post("/sessions/:id/test", async (req, res) => {
+  try {
+    const { user_id, answers, sleep_quality, cues_woke_me } = req.body || {};
+
+    const session = await getSession(Number(req.params.id), Number(user_id));
+
+    if (!session) {
+      return res.status(404).json({ error: "Session not found." });
+    }
+
+    if (session.tested_at !== null) {
+      return res.status(409).json({
+        error: "You already took the test for this session.",
+      });
+    }
+
+    const words = await sessionWords(session.id);
+    const graded = grade(words, answers);
+
+    if (!graded) {
+      return res.status(400).json({
+        error: "Answer every question",
+      });
+    }
+
+    const eveningDone = words.every((word) => word.evening_correct !== null);
+
+    const cued = {
+      score: 0,
+      total: 0,
+      evening: eveningDone ? 0 : null,
+    };
+
+    const uncued = {
+      score: 0,
+      total: 0,
+      evening: eveningDone ? 0 : null,
+    };
+
+    // Match each graded answer to its actual word by ID, rather than relying
+    // on array position.
+    const wordById = new Map(words.map((word) => [word.id, word]));
+
+    for (const item of graded) {
+      const group = item.cued ? cued : uncued;
+      const originalWord = wordById.get(item.wordId);
+
+      group.total++;
+
+      if (item.correct) {
+        group.score++;
+      }
+
+      if (eveningDone && Number(originalWord?.evening_correct) === 1) {
+        group.evening++;
+      }
+    }
+
+    const quality =
+      Number.isInteger(sleep_quality) &&
+      sleep_quality >= 1 &&
+      sleep_quality <= 5
+        ? sleep_quality
+        : null;
+
+    const woke = cues_woke_me === true ? 1 : cues_woke_me === false ? 0 : null;
+
+    const { data, error } = await supabase.rpc("finish_sleep_test", {
+      p_session_id: session.id,
+      p_cued_score: cued.score,
+      p_cued_total: cued.total,
+      p_uncued_score: uncued.score,
+      p_uncued_total: uncued.total,
+      p_cued_evening_score: cued.evening,
+      p_uncued_evening_score: uncued.evening,
+      p_sleep_quality: quality,
+      p_cues_woke_me: woke,
+    });
+
+    if (error) throw error;
+
+    if (data !== true) {
+      return res.status(409).json({
+        error: "The test could not be saved. It may already be finished.",
+      });
+    }
+
+    return res.json({
+      cued,
+      uncued,
+      results: graded.map((item) => ({
+        wordId: item.wordId,
+        word: item.word,
+        correctAnswer: item.correctAnswer,
+        correct: item.correct,
+      })),
+    });
+  } catch (err) {
+    console.error("Morning test error:", err);
+
+    return res.status(500).json({
+      error: "Could not save the morning test.",
+    });
   }
-
-  const words = sessionWords(session.id);
-  const graded = grade(words, answers);
-  if (!graded) return res.status(400).json({ error: "Answer every question" });
-
-  // The evening quiz is optional: only compare with it if every word has an evening result
-  const eveningDone = words.every((w) => w.evening_correct !== null);
-
-  const cued = { score: 0, total: 0, evening: eveningDone ? 0 : null };
-  const uncued = { score: 0, total: 0, evening: eveningDone ? 0 : null };
-
-  graded.forEach((g, index) => {
-    const group = g.cued ? cued : uncued;
-    group.total++;
-    if (g.correct) group.score++;
-    if (eveningDone && words[index].evening_correct === 1) group.evening++;
-  });
-
-  const quality =
-    Number.isInteger(sleep_quality) && sleep_quality >= 1 && sleep_quality <= 5
-      ? sleep_quality
-      : null;
-  const woke = cues_woke_me === true ? 1 : cues_woke_me === false ? 0 : null;
-
-  db.prepare(
-    `UPDATE sleep_sessions
-     SET tested_at = CURRENT_TIMESTAMP,
-         cued_score = ?, cued_total = ?, uncued_score = ?, uncued_total = ?,
-         cued_evening_score = ?, uncued_evening_score = ?,
-         sleep_quality = ?, cues_woke_me = ?
-     WHERE id = ?`,
-  ).run(
-    cued.score,
-    cued.total,
-    uncued.score,
-    uncued.total,
-    cued.evening,
-    uncued.evening,
-    quality,
-    woke,
-    session.id,
-  );
-
-  res.json({
-    cued,
-    uncued,
-    results: graded.map((g) => ({
-      wordId: g.wordId,
-      word: g.word,
-      correctAnswer: g.correctAnswer,
-      correct: g.correct,
-    })),
-  });
 });
 
-// A session waiting for its morning test, and past results: /sleep/history?user=1
-router.get("/history", (req, res) => {
-  const userId = Number(req.query.user);
-  if (!Number.isInteger(userId)) {
-    return res.status(400).json({ error: "user is required" });
-  }
+// ---------- Sleep history ----------
 
-  const pending =
-    db
-      .prepare(
-        `SELECT id, language, source, label, created_at
-         FROM sleep_sessions
-         WHERE user_id = ? AND tested_at IS NULL
-           AND created_at > datetime('now', '-48 hours')
-         ORDER BY id DESC LIMIT 1`,
+router.get("/history", async (req, res) => {
+  try {
+    const userId = Number(req.query.user);
+
+    if (!validId(userId)) {
+      return res.status(400).json({
+        error: "user is required",
+      });
+    }
+
+    const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+
+    const { data: pendingRows, error: pendingError } = await supabase
+      .from("sleep_sessions")
+      .select("id, language, source, label, created_at")
+      .eq("user_id", userId)
+      .is("tested_at", null)
+      .gt("created_at", since)
+      .order("id", { ascending: false })
+      .limit(1);
+
+    if (pendingError) throw pendingError;
+
+    const { data: results, error: resultsError } = await supabase
+      .from("sleep_sessions")
+      .select(
+        `id, language, source, label, created_at,
+         cued_score, cued_total,
+         uncued_score, uncued_total,
+         cued_evening_score, uncued_evening_score,
+         sleep_quality, cues_woke_me`,
       )
-      .get(userId) || null;
+      .eq("user_id", userId)
+      .not("tested_at", "is", null)
+      .order("id", { ascending: false })
+      .limit(14);
 
-  const results = db
-    .prepare(
-      `SELECT id, language, source, label, created_at, cued_score, cued_total,
-              uncued_score, uncued_total, cued_evening_score, uncued_evening_score,
-              sleep_quality, cues_woke_me
-       FROM sleep_sessions
-       WHERE user_id = ? AND tested_at IS NOT NULL
-       ORDER BY id DESC LIMIT 14`,
-    )
-    .all(userId);
+    if (resultsError) throw resultsError;
 
-  res.json({ pending, results });
+    return res.json({
+      pending: pendingRows?.[0] || null,
+      results: results || [],
+    });
+  } catch (err) {
+    console.error("Sleep history error:", err);
+
+    return res.status(500).json({
+      error: "Could not load sleep history.",
+    });
+  }
 });
 
 module.exports = router;

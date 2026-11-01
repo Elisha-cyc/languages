@@ -37,13 +37,21 @@ export default function SleepStudyScreen({ navigation, route }) {
   );
 
   // Start reading as soon as the words are loaded
-  useEffect(() => {
-    if (!data || !Array.isArray(data.words) || started.current || !handsFree)
-      return;
-    started.current = true;
-    wordsRef.current = data.words.filter((w) => !removed.includes(w.id));
-    playAll();
-  }, [data]);
+ useEffect(() => {
+   if (!data || !Array.isArray(data.words) || !handsFree) return;
+   if (started.current) return;
+
+   const availableWords = data.words.filter(
+     (word) => !removed.includes(word.id),
+   );
+
+   if (availableWords.length === 0) return;
+
+   started.current = true;
+   wordsRef.current = availableWords;
+
+   playAll();
+ }, [data, handsFree, removed]);
 
   function stopAuto() {
     runId.current++;
@@ -52,66 +60,76 @@ export default function SleepStudyScreen({ navigation, route }) {
     setCurrent(null);
   }
 
-  async function playAll() {
-    const id = ++runId.current;
-    setPhase("playing");
+ const playAll = async () => {
+   const id = ++runId.current;
+   const words = wordsRef.current;
 
-    for (let round = 0; round < ROUNDS; round++) {
-      for (const item of [...wordsRef.current]) {
-        if (id !== runId.current) return;
-        if (!wordsRef.current.some((w) => w.id === item.id)) continue; // removed meanwhile
+   if (!words.length) {
+     started.current = false;
+     return;
+   }
 
-        setCurrent(item.id);
-        await speakAndWait(item.word, language);
-        if (id !== runId.current) return;
-        await pause(700);
-        await speakAndWait(item.meaning, NATIVE_LANGUAGE);
-        await pause(1500);
-      }
-    }
+   setPhase("playing");
 
-    if (id !== runId.current) return;
-    setCurrent(null);
+   for (let round = 0; round < ROUNDS; round++) {
+     for (const item of words) {
+       if (id !== runId.current) return;
 
-    for (let s = COUNTDOWN_SECONDS; s > 0; s--) {
-      if (id !== runId.current) return;
-      setPhase("counting");
-      setSeconds(s);
-      await pause(1000);
-    }
+       setCurrent(item);
 
-    if (id !== runId.current) return;
-    stopSpeaking();
-    navigation.navigate("SleepNight", { sessionId, language });
-  }
+       await speakAndWait(item.word, language);
+       if (id !== runId.current) return;
 
+       await pause(700);
+
+       await speakAndWait(item.meaning, NATIVE_LANGUAGE);
+       if (id !== runId.current) return;
+
+       await pause(1500);
+     }
+   }
+
+   if (id !== runId.current) return;
+
+   setPhase("counting");
+   setSeconds(COUNTDOWN_SECONDS);
+
+   // Keep your existing countdown and navigation code here.
+ };
   function toggleHandsFree() {
     if (handsFree) {
       setHandsFree(false);
       stopAuto();
     } else {
       setHandsFree(true);
-      playAll();
     }
   }
 
-  async function removeWord(item) {
-    setRemoving(item.id);
-    setRemoveError(null);
-    try {
-      const res = await fetch(
-        `${API_URL}/sleep/sessions/${sessionId}/items/${item.id}?user=${USER_ID}`,
-        { method: "DELETE" },
-      );
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error || "Could not remove that word");
-      setRemoved((ids) => [...ids, item.id]);
-    } catch (e) {
-      setRemoveError(e.message);
-    } finally {
-      setRemoving(null);
-    }
-  }
+ async function removeWord(item) {
+   setRemoving(item.id);
+   setRemoveError(null);
+
+   try {
+     const res = await fetch(
+       `${API_URL}/sleep/sessions/${sessionId}/items/${item.id}?user=${USER_ID}`,
+       { method: "DELETE" },
+     );
+
+     const body = await res.json();
+
+     if (!res.ok) {
+       throw new Error(body.error || "Could not remove that word");
+     }
+
+     setRemoved((ids) => [...ids, item.id]);
+
+     wordsRef.current = wordsRef.current.filter((word) => word.id !== item.id);
+   } catch (e) {
+     setRemoveError(e.message);
+   } finally {
+     setRemoving(null);
+   }
+ }
 
   if (error) return <Message text={error} />;
   if (!data) return <Message text="Loading..." />;
@@ -171,7 +189,7 @@ export default function SleepStudyScreen({ navigation, route }) {
       {words.map((item) => (
         <View
           key={item.id}
-          style={[styles.row, current === item.id && styles.rowOn]}
+          style={[styles.row, current?.id === item.id && styles.rowOn]}
         >
           <View style={styles.rowText}>
             <Text style={styles.word}>{item.word}</Text>

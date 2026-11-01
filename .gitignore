@@ -65,3 +65,12 @@ server/*.db-*
 # Local build output
 dist/
 .expo/
+
+
+# Private database migration files
+migration/csv/
+migration/.env
+migration/*.sql
+
+# SQLite backup
+server/lingua-pre-supabase.db
