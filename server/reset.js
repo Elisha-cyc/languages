@@ -1,18 +1,25 @@
-const db = require("./database");
+"use strict";
 
-const lessonId = process.argv[2];
-if (!lessonId) {
-  console.log("Usage: node reset.js <lessonId>");
+const supabase = require("./supabase");
+
+const lessonId = Number(process.argv[2]);
+if (!Number.isInteger(lessonId)) {
+  console.log("Usage: node --env-file=.env reset.js <lessonId>");
   process.exit(1);
 }
 
-db.exec("BEGIN");
-try {
-  db.prepare("DELETE FROM words WHERE lesson_id = ?").run(lessonId);
-  db.prepare("UPDATE lessons SET status = 'empty' WHERE id = ?").run(lessonId);
-  db.exec("COMMIT");
+async function main() {
+  // Same behavior as before: delete the words, mark the lesson empty
+  const { error } = await supabase.rpc("reset_lessons", {
+    p_ids: [lessonId],
+    p_delete_progress: false,
+  });
+  if (error) throw new Error(error.message);
+
   console.log(`Lesson ${lessonId} reset. Run generate.js to fill it again.`);
-} catch (err) {
-  db.exec("ROLLBACK");
-  throw err;
 }
+
+main().catch((err) => {
+  console.error("Reset failed:", err.message);
+  process.exit(1);
+});

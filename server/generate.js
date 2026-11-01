@@ -1,6 +1,7 @@
-const db = require("./database");
-const { generateLesson } = require("./ai");
-const { PRONUNCIATION_GUIDE } = require("./curriculum");
+"use strict";
+
+const { ensureLesson } = require("./lessonmaker");
+const { findLessons } = require("./lessonqueries");
 
 const [language, level] = process.argv.slice(2);
 if (!language || !level) {
@@ -10,67 +11,31 @@ if (!language || !level) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const pending = db
-  .prepare(
-    `SELECT lessons.id, lessons.position, units.id AS unit_id,
-            units.title AS unit, levels.cefr
-     FROM lessons
-     JOIN units ON lessons.unit_id = units.id
-     JOIN languages ON units.language_id = languages.id
-     JOIN levels ON units.level_id = levels.id
-     WHERE languages.name = ? AND levels.name = ? AND lessons.status = 'empty'
-     ORDER BY units.position, lessons.position`,
-  )
-  .all(language, level);
-
-function saveLesson(lessonId, title, words) {
-  db.exec("BEGIN");
-  try {
-    db.prepare(
-      "UPDATE lessons SET title = ?, status = 'ready' WHERE id = ?",
-    ).run(title, lessonId);
-    const addWord = db.prepare(
-      "INSERT INTO words (lesson_id, word, meaning, pronunciation) VALUES (?, ?, ?, ?)",
-    );
-    for (const w of words) {
-      addWord.run(lessonId, w.word, w.meaning, w.pronunciation || null);
-    }
-    db.exec("COMMIT");
-  } catch (err) {
-    db.exec("ROLLBACK");
-    throw err;
-  }
-}
-
-async function generateWithRetry(args) {
+// lessonmaker already retries a bad AI answer once; this adds waiting for
+// rate limits and network hiccups.
+async function generateWithRetry(lessonId) {
   const MAX_ATTEMPTS = 5;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      return await generateLesson(args);
+      return await ensureLesson(lessonId);
     } catch (err) {
-      const dailyLimit = err.message.includes("tokens per day");
-      const rateLimited = err.message.startsWith("429") && !dailyLimit;
-      const networkError = err.message === "fetch failed";
-      const badAnswer =
-        err instanceof SyntaxError || err.message.startsWith("The AI");
+      const message = String(err.message);
+      const dailyLimit = message.includes("tokens per day");
+      const rateLimited = message.startsWith("429") && !dailyLimit;
+      const networkError = message === "fetch failed";
 
       if (
         dailyLimit ||
         attempt === MAX_ATTEMPTS ||
-        !(rateLimited || networkError || badAnswer)
+        !(rateLimited || networkError)
       ) {
         throw err;
       }
 
-      const waitSeconds = rateLimited ? 30 : networkError ? 10 : 2;
-      const reason = rateLimited
-        ? "rate limit"
-        : networkError
-          ? "network"
-          : "bad answer";
+      const waitSeconds = rateLimited ? 30 : 10;
       console.log(
-        `  retry ${attempt}/${MAX_ATTEMPTS - 1} in ${waitSeconds}s (${reason})`,
+        `  retry ${attempt}/${MAX_ATTEMPTS - 1} in ${waitSeconds}s (${rateLimited ? "rate limit" : "network"})`,
       );
       await sleep(waitSeconds * 1000);
     }
@@ -78,66 +43,26 @@ async function generateWithRetry(args) {
 }
 
 async function main() {
+  const pending = await findLessons(language, level, "empty");
   console.log(`${pending.length} ${language} ${level} lessons to generate...`);
   let done = 0;
 
   for (const lesson of pending) {
+    const label = `${lesson.units.title} #${lesson.position}`;
     try {
-      const previousTitles = db
-        .prepare(
-          "SELECT title FROM lessons WHERE unit_id = ? AND status = 'ready' ORDER BY position",
-        )
-        .all(lesson.unit_id)
-        .map((row) => row.title);
-
-      const result = await generateWithRetry({
-        language,
-        nativeLanguage: nativeLanguage,
-        level,
-        cefr: lesson.cefr,
-        unit: lesson.unit,
-        number: lesson.position,
-        total: 5,
-        previousTitles,
-        pronunciationGuide: PRONUNCIATION_GUIDE[language],
-      });
-
-      function saveLesson(lessonId, title, words) {
-        db.exec("BEGIN");
-        try {
-          db.prepare(
-            "UPDATE lessons SET title = ?, status = 'ready', format = 'sentences' WHERE id = ?",
-          ).run(title, lessonId);
-          const addWord = db.prepare(
-            "INSERT INTO words (lesson_id, word, meaning, pronunciation, focus) VALUES (?, ?, ?, ?, ?)",
-          );
-          for (const w of words) {
-            addWord.run(
-              lessonId,
-              w.word,
-              w.meaning,
-              w.pronunciation || null,
-              w.focus || null,
-            );
-          }
-          db.exec("COMMIT");
-        } catch (err) {
-          db.exec("ROLLBACK");
-          throw err;
-        }
-      }
+      await generateWithRetry(lesson.id);
       done++;
-      console.log(`OK  ${lesson.unit} #${lesson.position}: ${result.title}`);
+      console.log(`OK  ${label}`);
     } catch (err) {
-      console.error(
-        `FAIL ${lesson.unit} #${lesson.position}: ${err.message.slice(0, 200)}`,
-      );
-      if (err.message.includes("tokens per day")) {
+      const message = String(err.message);
+      console.error(`FAIL ${label}: ${message.slice(0, 200)}`);
+
+      if (message.includes("tokens per day")) {
         console.error("Daily token limit reached. Try again tomorrow.");
         process.exitCode = 2;
         break;
       }
-      if (err.message.startsWith("429")) {
+      if (message.startsWith("429")) {
         console.error("Still rate limited. Try again in a while.");
         process.exitCode = 2;
         break;
@@ -150,4 +75,7 @@ async function main() {
   console.log(`Finished: ${done} lessons generated.`);
 }
 
-main();
+main().catch((err) => {
+  console.error("Generation failed:", err.message);
+  process.exit(1);
+});

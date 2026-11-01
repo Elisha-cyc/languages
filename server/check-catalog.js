@@ -1,14 +1,23 @@
-const db = require("./database");
+"use strict";
 
-const rows = db
-  .prepare(
-    "SELECT language, COUNT(*) AS n FROM catalog GROUP BY language ORDER BY n DESC",
-  )
-  .all();
+const supabase = require("./supabase");
 
-console.log("Books in the local catalog, by language code:");
-for (const row of rows) console.log(`${row.language.padEnd(8)} ${row.n}`);
-if (rows.length === 0)
-  console.log(
-    "The catalog is empty. Run: node --env-file=.env sync-catalog.js",
-  );
+async function main() {
+  const { data, error } = await supabase.rpc("catalog_language_counts");
+  if (error) throw new Error(error.message);
+
+  console.log("Books in the catalog, by language code:");
+  for (const row of data) {
+    console.log(`${String(row.language).padEnd(8)} ${row.n}`);
+  }
+  if (data.length === 0) {
+    console.log(
+      "The catalog is empty. Run: node --env-file=.env sync-catalog.js",
+    );
+  }
+}
+
+main().catch((err) => {
+  console.error("Check failed:", err.message);
+  process.exit(1);
+});

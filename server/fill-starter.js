@@ -1,5 +1,7 @@
-const db = require("./database");
+"use strict";
+
 const { ensureLesson } = require("./lessonmaker");
+const { findLessons } = require("./lessonqueries");
 const { LANGUAGES } = require("./curriculum");
 
 const perLanguage = Number(process.argv[2]) || 3; // ready lessons wanted per language
@@ -10,30 +12,11 @@ async function main() {
   let made = 0;
 
   for (const language of LANGUAGES) {
-    const has = db
-      .prepare(
-        `SELECT COUNT(*) AS n FROM lessons
-         JOIN units ON units.id = lessons.unit_id
-         JOIN languages ON languages.id = units.language_id
-         JOIN levels ON levels.id = units.level_id
-         WHERE languages.name = ? AND levels.name = ? AND lessons.status = 'ready'`,
-      )
-      .get(language, level).n;
-
+    const has = (await findLessons(language, level, "ready")).length;
     const need = perLanguage - has;
     if (need <= 0) continue;
 
-    const todo = db
-      .prepare(
-        `SELECT lessons.id FROM lessons
-         JOIN units ON units.id = lessons.unit_id
-         JOIN languages ON languages.id = units.language_id
-         JOIN levels ON levels.id = units.level_id
-         WHERE languages.name = ? AND levels.name = ? AND lessons.status = 'empty'
-         ORDER BY units.position, lessons.position
-         LIMIT ?`,
-      )
-      .all(language, level, need);
+    const todo = (await findLessons(language, level, "empty")).slice(0, need);
 
     for (const { id } of todo) {
       try {
@@ -58,4 +41,7 @@ async function main() {
   console.log(`Done. Made ${made} lessons.`);
 }
 
-main();
+main().catch((err) => {
+  console.error("Fill failed:", err.message);
+  process.exit(1);
+});

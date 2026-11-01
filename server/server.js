@@ -5,11 +5,9 @@ const mammoth = require("mammoth");
 const { PDFParse } = require("pdf-parse");
 
 const { askTutor, MODES, retellBook, chatTest } = require("./ai");
-const db = require("./database");
 const supabase = require("./supabase");
 const { imageToText, OCR_LANGUAGES } = require("./ocr");
 const { ensureLesson } = require("./lessonmaker");
-
 
 const {
   searchFreeBooks,
@@ -47,7 +45,7 @@ app.get("/", (req, res) => {
   res.send("LinguaApp server is running");
 });
 
-app.use("/chat", require("./chat"));0.
+app.use("/chat", require("./chat"));
 app.use("/hanzi", require("./hanzi"));
 app.use("/speech", require("./speech"));
 
@@ -132,7 +130,7 @@ app.get("/units", async (req, res, next) => {
         if (progressError) throw progressError;
 
         completedLessonIds = new Set(
-          (progress || []).map((item) => item.lesson_id)
+          (progress || []).map((item) => item.lesson_id),
         );
       }
 
@@ -151,7 +149,7 @@ app.get("/units", async (req, res, next) => {
         const unitLessons = lessonsByUnit.get(unit.id) || [];
         const total = unitLessons.length;
         const done = unitLessons.filter((id) =>
-          completedLessonIds.has(id)
+          completedLessonIds.has(id),
         ).length;
 
         const locked = !previousComplete;
@@ -211,9 +209,7 @@ app.get("/lessons", async (req, res, next) => {
 
       if (progressError) throw progressError;
 
-      completedIds = new Set(
-        (progress || []).map((item) => item.lesson_id)
-      );
+      completedIds = new Set((progress || []).map((item) => item.lesson_id));
     }
 
     res.json(
@@ -221,7 +217,7 @@ app.get("/lessons", async (req, res, next) => {
         id: lesson.id,
         title: lesson.title,
         completed: completedIds.has(lesson.id),
-      }))
+      })),
     );
   } catch (err) {
     next(err);
@@ -310,7 +306,7 @@ function shuffle(list) {
 
 // Get quiz questions without revealing the answers
 
- // Get quiz questions without revealing the answers
+// Get quiz questions without revealing the answers
 app.get("/lessons/:id/quiz", async (req, res, next) => {
   try {
     const lessonId = Number(req.params.id);
@@ -437,24 +433,18 @@ app.post("/lessons/:id/quiz", async (req, res, next) => {
         .limit(1);
 
       if (readError) {
-        throw new Error(
-          `Could not check progress: ${readError.message}`,
-        );
+        throw new Error(`Could not check progress: ${readError.message}`);
       }
 
       if (!existing || existing.length === 0) {
-        const { error: insertError } = await supabase
-          .from("progress")
-          .insert({
-            user_id: userId,
-            lesson_id: lessonId,
-            completed_at: new Date().toISOString(),
-          });
+        const { error: insertError } = await supabase.from("progress").insert({
+          user_id: userId,
+          lesson_id: lessonId,
+          completed_at: new Date().toISOString(),
+        });
 
         if (insertError) {
-          throw new Error(
-            `Could not save progress: ${insertError.message}`,
-          );
+          throw new Error(`Could not save progress: ${insertError.message}`);
         }
       }
     }
@@ -464,7 +454,6 @@ app.post("/lessons/:id/quiz", async (req, res, next) => {
     next(err);
   }
 });
-
 
 // ---------- AI tutor ----------
 
@@ -784,7 +773,7 @@ function searchRoute(search) {
 app.get("/books/free", searchRoute(searchFreeBooks));
 
 // Browse books in a language
-app.get("/books/browse", (req, res, next) => {
+app.get("/books/browse", async (req, res, next) => {
   const language = req.query.language;
 
   if (!BOOK_LANGUAGES[language]) {
@@ -794,7 +783,7 @@ app.get("/books/browse", (req, res, next) => {
   }
 
   try {
-    res.json(browseFreeBooks(language));
+    res.json(await browseFreeBooks(language));
   } catch (err) {
     console.error("Browse error:", err.message);
 
@@ -1067,17 +1056,18 @@ app.post("/chat/test", async (req, res) => {
 
 // ---------- Startup checks ----------
 
-try {
-  const catalogSize = db.prepare("SELECT COUNT(*) AS n FROM catalog").get().n;
-
-  if (catalogSize === 0) {
-    console.warn(
-      "Free-book catalog is empty. Run: node --env-file=.env sync-catalog.js",
-    );
-  }
-} catch (err) {
-  console.error("Could not check the free-book catalog:", err.message);
-}
+supabase
+  .from("catalog")
+  .select("id", { count: "exact", head: true })
+  .then(({ count, error }) => {
+    if (error) {
+      console.error("Could not check the free-book catalog:", error.message);
+    } else if (!count) {
+      console.warn(
+        "Free-book catalog is empty. Run: node --env-file=.env sync-catalog.js",
+      );
+    }
+  });
 
 // ---------- Fallback routes (keep these last) ----------
 

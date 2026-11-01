@@ -1,5 +1,5 @@
 const { parse } = require("csv-parse/sync");
-const db = require("./database");
+const supabase = require("./supabase");
 const { BOOK_LANGUAGES, searchKey } = require("./books");
 
 const CATALOG_URL = "https://www.gutenberg.org/cache/epub/feeds/pg_catalog.csv";
@@ -31,52 +31,47 @@ async function main() {
   }
 
   const wanted = new Set(Object.values(BOOK_LANGUAGES).map((l) => l.gutenberg));
-  const add = db.prepare(
-    `INSERT OR REPLACE INTO catalog (id, title, authors, language, title_key, search)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  );
 
-  let kept = 0;
-  db.exec("BEGIN");
-  try {
-    db.exec("DELETE FROM catalog");
+  const books = [];
+  const seen = new Set();
 
-    for (const row of rows) {
-      if (row.Type !== "Text") continue;
+  for (const row of rows) {
+    if (row.Type !== "Text") continue;
 
-      const id = Number(row["Text#"]);
-      const languages = String(row.Language || "")
-        .split(/[;,\s/]+/)
-        .map((code) => code.trim().toLowerCase())
-        .filter(Boolean);
-      if (!Number.isInteger(id) || !languages.some((code) => wanted.has(code)))
-        continue;
+    const id = Number(row["Text#"]);
+    const languages = String(row.Language || "")
+      .split(/[;,\s/]+/)
+      .map((code) => code.trim().toLowerCase())
+      .filter(Boolean);
+    if (!Number.isInteger(id) || !languages.some((code) => wanted.has(code)))
+      continue;
+    if (seen.has(id)) continue; // INSERT OR REPLACE used to keep only the last copy
+    seen.add(id);
 
-      const title = String(row.Title || "")
+    const title = String(row.Title || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!title) continue;
+    const authors =
+      String(row.Authors || "")
         .replace(/\s+/g, " ")
-        .trim();
-      if (!title) continue;
-      const authors =
-        String(row.Authors || "")
-          .replace(/\s+/g, " ")
-          .trim() || "Unknown author";
+        .trim() || "Unknown author";
 
-      add.run(
-        id,
-        title,
-        authors,
-        `,${languages.join(",")},`,
-        searchKey(title),
-        searchKey(`${title} ${authors}`),
-      );
-      kept++;
-    }
-
-    db.exec("COMMIT");
-  } catch (err) {
-    db.exec("ROLLBACK");
-    throw err;
+    books.push({
+      id,
+      title,
+      authors,
+      language: `,${languages.join(",")},`,
+      title_key: searchKey(title),
+      search: searchKey(`${title} ${authors}`),
+    });
   }
+
+  // One database transaction: the old catalog is only removed if the new one saves
+  const { data: kept, error } = await supabase.rpc("replace_catalog", {
+    p_rows: books,
+  });
+  if (error) throw new Error(`Could not save the catalog: ${error.message}`);
 
   console.log(`Saved ${kept} books in your 20 languages. Done.`);
 }

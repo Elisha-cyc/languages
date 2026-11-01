@@ -89,38 +89,49 @@ function tidyAuthors(authors) {
   );
 }
 
-function searchCatalog(title, code) {
-  const count = db.prepare("SELECT COUNT(*) AS n FROM catalog").get().n;
-  if (count === 0) {
+// Throws a friendly 503 if the catalog table is empty (never synced)
+async function requireCatalog() {
+  const { count, error } = await supabase
+    .from("catalog")
+    .select("id", { count: "exact", head: true });
+
+  if (error)
+    throw new BookError(`Catalog lookup failed: ${error.message}`, 502);
+  if (!count) {
     throw new BookError(
       "The free-book catalog has not been downloaded yet. Run: node --env-file=.env sync-catalog.js",
       503,
     );
   }
+}
+
+async function searchCatalog(title, code) {
+  await requireCatalog();
 
   const key = searchKey(title);
   const words = key.split(" ").filter(Boolean).slice(0, 6);
   if (words.length === 0) return [];
 
   // Every word typed must appear in the title or the author
-  const wordTests = words.map(() => "search LIKE ?").join(" AND ");
+  // (the matching and ordering live in the search_catalog SQL function)
+  const { data, error } = await supabase.rpc("search_catalog", {
+    p_code: code,
+    p_words: words,
+    p_key: key,
+  });
+  if (error)
+    throw new BookError(`Catalog search failed: ${error.message}`, 502);
 
-  return db
-    .prepare(
-      `SELECT id, title, authors
-       FROM catalog
-       WHERE language LIKE ? AND ${wordTests}
-       ORDER BY (title_key LIKE ?) DESC, LENGTH(title) ASC
-       LIMIT 8`,
-    )
-    .all(`%,${code},%`, ...words.map((word) => `%${word}%`), `${key}%`)
-    .map((book) => ({ ...book, authors: tidyAuthors(book.authors) }));
+  return (data || []).map((book) => ({
+    ...book,
+    authors: tidyAuthors(book.authors),
+  }));
 }
 
-function searchFreeBooks(rawTitle, languageName) {
+async function searchFreeBooks(rawTitle, languageName) {
   const title = cleanQuery(rawTitle);
   if (title.length < 2) throw new BookError("Enter a book title.", 400);
-  return searchCatalog(title, BOOK_LANGUAGES[languageName].gutenberg);
+  return await searchCatalog(title, BOOK_LANGUAGES[languageName].gutenberg);
 }
 
 // ---------- Details-only results: Open Library ----------
@@ -257,7 +268,13 @@ async function loadBook(id) {
   if (cache.has(id)) return cache.get(id);
 
   // Only books in our own catalog can be read
-  const row = db.prepare("SELECT title FROM catalog WHERE id = ?").get(id);
+  const { data: row, error: rowError } = await supabase
+    .from("catalog")
+    .select("title")
+    .eq("id", id)
+    .maybeSingle();
+  if (rowError)
+    throw new BookError(`Catalog lookup failed: ${rowError.message}`, 502);
   if (!row)
     throw new BookError("That book is not available to read here.", 404);
 
@@ -274,22 +291,23 @@ async function loadBook(id) {
 }
 
 // Lists readable books in a language without typing a title (Chinese has few books)
-function browseFreeBooks(languageName) {
-  const count = db.prepare("SELECT COUNT(*) AS n FROM catalog").get().n;
-  if (count === 0) {
-    throw new BookError(
-      "The free-book catalog has not been downloaded yet. Run: node --env-file=.env sync-catalog.js",
-      503,
-    );
-  }
+async function browseFreeBooks(languageName) {
+  await requireCatalog();
+
   const code = BOOK_LANGUAGES[languageName].gutenberg;
-  return db
-    .prepare(
-      `SELECT id, title, authors FROM catalog
-       WHERE language LIKE ? ORDER BY title LIMIT 60`,
-    )
-    .all(`%,${code},%`)
-    .map((book) => ({ ...book, authors: tidyAuthors(book.authors) }));
+  const { data, error } = await supabase
+    .from("catalog")
+    .select("id, title, authors")
+    .like("language", `%,${code},%`)
+    .order("title", { ascending: true })
+    .limit(60);
+  if (error)
+    throw new BookError(`Catalog browse failed: ${error.message}`, 502);
+
+  return (data || []).map((book) => ({
+    ...book,
+    authors: tidyAuthors(book.authors),
+  }));
 }
 
 // ---------- Wikisource: free texts in many languages ----------
