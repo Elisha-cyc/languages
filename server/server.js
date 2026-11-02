@@ -7,7 +7,6 @@ const supabase = require("./supabase");
 const { imageToText, OCR_LANGUAGES } = require("./ocr");
 const { ensureLesson } = require("./lessonmaker");
 
-
 const {
   searchFreeBooks,
   searchDetailBooks,
@@ -26,7 +25,9 @@ const {
 function loadPdfParse() {
   const { PDFParse } = require("pdf-parse");
   if (typeof PDFParse !== "function") {
-    throw new Error("pdf-parse is an old version. Run: npm install pdf-parse@latest");
+    throw new Error(
+      "pdf-parse is an old version. Run: npm install pdf-parse@latest",
+    );
   }
   return PDFParse;
 }
@@ -39,6 +40,7 @@ app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
 const { router: authRouter, requireAuth } = require("./auth");
+const { localize } = require("./translate");
 
 app.use("/auth", authRouter);
 app.use("/admin", require("./admin")); // private owner page, has its own password
@@ -133,7 +135,7 @@ app.get("/units", async (req, res, next) => {
         if (progressError) throw progressError;
 
         completedLessonIds = new Set(
-          (progress || []).map((item) => item.lesson_id)
+          (progress || []).map((item) => item.lesson_id),
         );
       }
 
@@ -152,7 +154,7 @@ app.get("/units", async (req, res, next) => {
         const unitLessons = lessonsByUnit.get(unit.id) || [];
         const total = unitLessons.length;
         const done = unitLessons.filter((id) =>
-          completedLessonIds.has(id)
+          completedLessonIds.has(id),
         ).length;
 
         const locked = !previousComplete;
@@ -167,7 +169,9 @@ app.get("/units", async (req, res, next) => {
         };
       });
 
-      return res.json(result);
+      return res.json(
+        await localize("unit_title", result, "title", req.user?.nativeLanguage),
+      );
     }
 
     return res.json([]);
@@ -212,17 +216,17 @@ app.get("/lessons", async (req, res, next) => {
 
       if (progressError) throw progressError;
 
-      completedIds = new Set(
-        (progress || []).map((item) => item.lesson_id)
-      );
+      completedIds = new Set((progress || []).map((item) => item.lesson_id));
     }
 
+    const items = (lessons || []).map((lesson) => ({
+      id: lesson.id,
+      title: lesson.title,
+      completed: completedIds.has(lesson.id),
+    }));
+
     res.json(
-      (lessons || []).map((lesson) => ({
-        id: lesson.id,
-        title: lesson.title,
-        completed: completedIds.has(lesson.id),
-      }))
+      await localize("lesson_title", items, "title", req.user?.nativeLanguage),
     );
   } catch (err) {
     next(err);
@@ -250,7 +254,14 @@ app.get("/lessons/:id/words", async (req, res) => {
       throw new Error(`Could not load lesson words: ${wordsError.message}`);
     }
 
-    res.json(words);
+    res.json(
+      await localize(
+        "word_meaning",
+        words,
+        "meaning",
+        req.user?.nativeLanguage,
+      ),
+    );
   } catch (err) {
     console.error("Lesson error:", err.message);
 
@@ -311,7 +322,7 @@ function shuffle(list) {
 
 // Get quiz questions without revealing the answers
 
- // Get quiz questions without revealing the answers
+// Get quiz questions without revealing the answers
 app.get("/lessons/:id/quiz", async (req, res, next) => {
   try {
     const lessonId = Number(req.params.id);
@@ -320,7 +331,7 @@ app.get("/lessons/:id/quiz", async (req, res, next) => {
       return res.status(400).json({ error: "Invalid lesson ID." });
     }
 
-    const { data: words, error } = await supabase
+    const { data: rawWords, error } = await supabase
       .from("words")
       .select("id, word, meaning, pronunciation")
       .eq("lesson_id", lessonId)
@@ -329,6 +340,13 @@ app.get("/lessons/:id/quiz", async (req, res, next) => {
     if (error) {
       throw new Error(`Could not load quiz words: ${error.message}`);
     }
+
+    const words = await localize(
+      "word_meaning",
+      rawWords || [],
+      "meaning",
+      req.user?.nativeLanguage,
+    );
 
     const meanings = [...new Set(words.map((word) => word.meaning))];
 
@@ -376,7 +394,7 @@ app.post("/lessons/:id/quiz", async (req, res, next) => {
       });
     }
 
-    const { data: words, error: wordsError } = await supabase
+    const { data: rawWords, error: wordsError } = await supabase
       .from("words")
       .select("id, word, meaning")
       .eq("lesson_id", lessonId)
@@ -385,6 +403,17 @@ app.post("/lessons/:id/quiz", async (req, res, next) => {
     if (wordsError) {
       throw new Error(`Could not load quiz words: ${wordsError.message}`);
     }
+
+    // The quiz was shown in the user's language; grade in that same language
+    const words = await localize(
+      "word_meaning",
+      rawWords || [],
+      "meaning",
+      req.user?.nativeLanguage,
+    );
+    const originalMeaning = new Map(
+      (rawWords || []).map((word) => [word.id, word.meaning]),
+    );
 
     if (!words || words.length === 0) {
       return res.status(404).json({
@@ -421,7 +450,11 @@ app.post("/lessons/:id/quiz", async (req, res, next) => {
     const results = words.map((word) => ({
       wordId: word.id,
       word: word.word,
-      correct: given.get(word.id) === word.meaning,
+      // Also accept the original text, in case the translation was unavailable
+      // when the quiz was shown
+      correct:
+        given.get(word.id) === word.meaning ||
+        given.get(word.id) === originalMeaning.get(word.id),
       correctAnswer: word.meaning,
     }));
 
@@ -438,24 +471,18 @@ app.post("/lessons/:id/quiz", async (req, res, next) => {
         .limit(1);
 
       if (readError) {
-        throw new Error(
-          `Could not check progress: ${readError.message}`,
-        );
+        throw new Error(`Could not check progress: ${readError.message}`);
       }
 
       if (!existing || existing.length === 0) {
-        const { error: insertError } = await supabase
-          .from("progress")
-          .insert({
-            user_id: userId,
-            lesson_id: lessonId,
-            completed_at: new Date().toISOString(),
-          });
+        const { error: insertError } = await supabase.from("progress").insert({
+          user_id: userId,
+          lesson_id: lessonId,
+          completed_at: new Date().toISOString(),
+        });
 
         if (insertError) {
-          throw new Error(
-            `Could not save progress: ${insertError.message}`,
-          );
+          throw new Error(`Could not save progress: ${insertError.message}`);
         }
       }
     }
@@ -465,7 +492,6 @@ app.post("/lessons/:id/quiz", async (req, res, next) => {
     next(err);
   }
 });
-
 
 // ---------- AI tutor ----------
 
@@ -595,7 +621,8 @@ app.post("/import", (req, res) => {
           });
         }
 
-        text = (await require("mammoth").extractRawText({ buffer: bytes })).value;
+        text = (await require("mammoth").extractRawText({ buffer: bytes }))
+          .value;
       } else if (name.endsWith(".txt")) {
         text = bytes.toString("utf8");
       } else if (name.endsWith(".doc")) {
@@ -1005,6 +1032,7 @@ app.get("/books/:id/text", async (req, res) => {
 // ---------- Sleep mode ----------
 
 app.use("/sleep", require("./sleep"));
+app.use("/teacher", require("./teacher"));
 
 // ---------- Chat test ----------
 

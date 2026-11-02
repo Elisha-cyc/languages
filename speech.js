@@ -60,9 +60,15 @@ async function loadVoices() {
   if (voiceCache.length > 0) return voiceCache;
   try {
     let voices = await Speech.getAvailableVoicesAsync();
-    // Chrome fills its voice list a moment after the page opens, so look once more
-    if (!voices || voices.length === 0) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+    // Chrome and Safari fill their voice list a moment after the page opens.
+    // Without it the phone may read French text with its English voice, which
+    // sounds like gibberish, so wait for it (up to about 3 seconds).
+    for (
+      let tries = 0;
+      (!voices || voices.length === 0) && tries < 12;
+      tries++
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
       voices = await Speech.getAvailableVoicesAsync();
     }
     voiceCache = voices || [];
@@ -76,6 +82,24 @@ const normalizeCode = (code) =>
   String(code || "")
     .replace("_", "-")
     .toLowerCase();
+
+// Higher is clearer. Premium and Enhanced voices sound far more natural than
+// the small default ones; novelty voices are never a good choice.
+function voiceScore(voice) {
+  const name = `${voice.name || ""} ${voice.identifier || ""}`.toLowerCase();
+  let score = 0;
+  if (/premium|siri/.test(name)) score += 4;
+  if (voice.quality === "Enhanced" || /enhanced/.test(name)) score += 3;
+  if (/google|natural|neural|online/.test(name)) score += 2;
+  if (/compact/.test(name)) score -= 2;
+  if (
+    /albert|bad news|bahh|bells|boing|bubbles|cellos|deranged|good news|hysterical|jester|organ|trinoids|whisper|zarvox|superstar/.test(
+      name,
+    )
+  )
+    score -= 10;
+  return score;
+}
 
 export async function findVoice(code) {
   const voices = await loadVoices();
@@ -92,7 +116,7 @@ export async function findVoice(code) {
     (voice) => normalizeCode(voice.language) === wanted,
   );
   const pool = exact.length > 0 ? exact : matches;
-  return pool.find((voice) => voice.quality === "Enhanced") || pool[0];
+  return [...pool].sort((a, b) => voiceScore(b) - voiceScore(a))[0];
 }
 
 // For the speech check screen: which of our languages have a voice on this device
@@ -108,6 +132,41 @@ export async function voiceReport() {
     });
   }
   return { total: voices.length, rows };
+}
+
+// ---------- Cleaning text before it is spoken ----------
+
+// Languages whose own script is not Latin letters
+const NON_LATIN = new Set([
+  "Mandarin Chinese",
+  "Japanese",
+  "Korean",
+  "Hindi",
+  "Arabic",
+  "Greek",
+  "Hebrew",
+  "Thai",
+  "Russian",
+]);
+
+// Symbols and notes that a voice would read out as noise
+export function cleanForSpeech(text, language) {
+  let clean = String(text || "");
+  clean = clean.replace(/https?:\/\/\S+/g, " "); // web addresses
+  clean = clean.replace(/[*_#`>~|]+/g, " "); // markdown marks
+  clean = clean.replace(
+    /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu,
+    " ",
+  ); // emoji
+  if (NON_LATIN.has(language)) {
+    // Pinyin or romanization in brackets, e.g. "你好 (nǐ hǎo)", would be read
+    // out by the Chinese voice as nonsense
+    clean = clean.replace(
+      /[(\[（【][^)\]）】]*[A-Za-z\u00C0-\u024F][^)\]）】]*[)\]）】]/g,
+      " ",
+    );
+  }
+  return clean.replace(/\s+/g, " ").trim();
 }
 
 // ---------- Cutting long text into pieces ----------
@@ -174,7 +233,7 @@ export async function speak(text, language, options = {}) {
     return { ok: false, reason };
   }
 
-  const chunks = chunkText(text);
+  const chunks = chunkText(cleanForSpeech(text, language));
   if (chunks.length === 0) {
     onFinish && onFinish();
     return { ok: true };

@@ -133,12 +133,12 @@ async function complete(messages, maxTokens, model = MODEL, options = {}) {
   }
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-   const body = {
-     model,
-     max_tokens: tokenLimit,
-     messages,
-     ...options,
-   };
+    const body = {
+      model,
+      max_tokens: tokenLimit,
+      messages,
+      ...options,
+    };
 
     if (process.env.REASONING_EFFORT) {
       body.reasoning_effort = process.env.REASONING_EFFORT;
@@ -402,23 +402,21 @@ async function generateLesson({
 
   const length = SENTENCE_LENGTH[level] || "5 to 12 words";
 
-const user = [
-  `Level: ${level} (${cefr}). Unit theme: "${unit}". This is lesson ${number} of ${total} in the unit.`,
-  previousTitles.length
-    ? `Earlier lessons in this unit: ${previousTitles.join("; ")}. Choose a different, more specific sub-topic.`
-    : "This is the first lesson in the unit, so start with the most basic situations of the theme.",
-  `Write ${SENTENCES_PER_LESSON} natural sentences that a real ${language} speaker would say about this theme. Each sentence is ${length} long, grammatically correct, and different from the others.`,
-  `Every sentence must fit the unit theme "${unit}". Do not drift into other themes.`,
-  'The title must not contain the word "Lesson" or any number.',
-  pronunciationGuide
-    ? `For each sentence also give "pronunciation" using ${pronunciationGuide}.`
-    : "",
-  `Format: {"title":"short lesson title in ${nativeLanguage}","sentences":[{"sentence":"in ${language}","translation":"natural ${nativeLanguage} translation","focus":"one key word from the sentence"}${pronunciationGuide ? ',"pronunciation":"..."' : ""}]}`,
-]
-  .filter(Boolean)
-  .join("\n");
-
-
+  const user = [
+    `Level: ${level} (${cefr}). Unit theme: "${unit}". This is lesson ${number} of ${total} in the unit.`,
+    previousTitles.length
+      ? `Earlier lessons in this unit: ${previousTitles.join("; ")}. Choose a different, more specific sub-topic.`
+      : "This is the first lesson in the unit, so start with the most basic situations of the theme.",
+    `Write ${SENTENCES_PER_LESSON} natural sentences that a real ${language} speaker would say about this theme. Each sentence is ${length} long, grammatically correct, and different from the others.`,
+    `Every sentence must fit the unit theme "${unit}". Do not drift into other themes.`,
+    'The title must not contain the word "Lesson" or any number.',
+    pronunciationGuide
+      ? `For each sentence also give "pronunciation" using ${pronunciationGuide}.`
+      : "",
+    `Format: {"title":"short lesson title in ${nativeLanguage}","sentences":[{"sentence":"in ${language}","translation":"natural ${nativeLanguage} translation","focus":"one key word from the sentence"}${pronunciationGuide ? ',"pronunciation":"..."' : ""}]}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const reply = await chat(
     system,
@@ -526,25 +524,25 @@ async function extractVocabulary({
     .join("\n");
 
   // Reduced from 1000 to 700 to help control token usage.
- const reply = await complete(
-  [
+  const reply = await complete(
+    [
+      {
+        role: "system",
+        content: `${system}\nReturn valid JSON only.`,
+      },
+      {
+        role: "user",
+        content: user,
+      },
+    ],
+    1400,
+    process.env.TUTOR_MODEL || MODEL,
     {
-      role: "system",
-      content: `${system}\nReturn valid JSON only.`,
+      response_format: {
+        type: "json_object",
+      },
     },
-    {
-      role: "user",
-      content: user,
-    },
-  ],
-  1400,
-  process.env.TUTOR_MODEL || MODEL,
-  {
-    response_format: {
-      type: "json_object",
-    },
-  },
-);
+  );
 
   const data = parseAIJson(reply);
 
@@ -599,7 +597,6 @@ async function extractVocabulary({
   console.log("Requested words:", requestedCount);
   console.log("Accepted words:", items.length);
   console.log("Extracted words:", items);
-
 
   return items.slice(0, requestedCount);
 }
@@ -834,6 +831,7 @@ async function chatTest({ language, nativeLanguage, level, history }) {
 }
 
 module.exports = {
+  complete,
   askTutor,
   generateLesson,
   extractVocabulary,

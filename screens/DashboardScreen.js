@@ -29,6 +29,12 @@ export default function DashboardScreen({ navigation }) {
         onPress={() => navigation.navigate("ChatTab")}
       />
       <Tile
+        icon="🎓"
+        title="Learn with a teacher"
+        text="Listen, repeat and get feedback"
+        onPress={() => navigation.navigate("Teacher")}
+      />
+      <Tile
         icon="📖"
         title="Read a book"
         text="Free books read with your tutor"
