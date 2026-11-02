@@ -17,7 +17,10 @@ const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 function newCode() {
   const part = () =>
-    Array.from({ length: 4 }, () => ALPHABET[crypto.randomInt(ALPHABET.length)]).join("");
+    Array.from(
+      { length: 4 },
+      () => ALPHABET[crypto.randomInt(ALPHABET.length)],
+    ).join("");
   return `LING-${part()}-${part()}`;
 }
 
@@ -39,7 +42,9 @@ const WINDOW_MS = 15 * 60 * 1000;
 
 function clientKey(req) {
   return (
-    String(req.get("x-forwarded-for") || "").split(",")[0].trim() ||
+    String(req.get("x-forwarded-for") || "")
+      .split(",")[0]
+      .trim() ||
     req.ip ||
     "unknown"
   );
@@ -57,7 +62,9 @@ function guard(req, res, next) {
 
   const key = clientKey(req);
   if (recentFailures(key).length >= 8) {
-    return res.status(429).json({ error: "Too many wrong passwords. Try again in 15 minutes." });
+    return res
+      .status(429)
+      .json({ error: "Too many wrong passwords. Try again in 15 minutes." });
   }
   if (!passwordOk(req)) {
     recentFailures(key).push(Date.now());
@@ -82,18 +89,28 @@ router.get("/api/list", guard, async (req, res) => {
     .select("code, label, used_at, revoked_at")
     .order("id", { ascending: false })
     .limit(100);
-  if (error) return res.status(500).json({ error: "Could not load the codes." });
+  if (error)
+    return res.status(500).json({ error: "Could not load the codes." });
   res.json({ codes: data, appUrl: process.env.APP_URL || "" });
 });
 
 router.post("/api/create", guard, async (req, res) => {
-  const label = String((req.body && req.body.label) || "").trim().slice(0, 40);
+  const label = String((req.body && req.body.label) || "")
+    .trim()
+    .slice(0, 40);
   const code = newCode();
   const { error } = await supabase
     .from("invite_codes")
     .insert({ code, label: label || "Unnamed" });
-  if (error) return res.status(500).json({ error: "Could not create the code." });
-  res.status(201).json({ code, label: label || "Unnamed", appUrl: process.env.APP_URL || "" });
+  if (error)
+    return res.status(500).json({ error: "Could not create the code." });
+  res
+    .status(201)
+    .json({
+      code,
+      label: label || "Unnamed",
+      appUrl: process.env.APP_URL || "",
+    });
 });
 
 router.post("/api/revoke", guard, async (req, res) => {
@@ -104,7 +121,8 @@ router.post("/api/revoke", guard, async (req, res) => {
     .eq("code", code)
     .is("used_at", null)
     .select("code");
-  if (error) return res.status(500).json({ error: "Could not cancel the code." });
+  if (error)
+    return res.status(500).json({ error: "Could not cancel the code." });
   res.json({ revoked: data.length > 0 });
 });
 
@@ -136,6 +154,10 @@ const PAGE = `<!doctype html>
   .err { color:var(--red); margin:8px 0 0; min-height:20px; }
   .used { opacity:.55; }
   .hidden { display:none; }
+  .field { position:relative; }
+  .field input { padding-right:52px; }
+  button.eye { position:absolute; right:4px; top:6px; width:44px; height:48px; margin:0; padding:0; background:transparent; color:var(--muted); display:flex; align-items:center; justify-content:center; }
+  button.eye svg { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
 </style>
 </head>
 <body>
@@ -144,7 +166,13 @@ const PAGE = `<!doctype html>
 
   <div id="lock" class="card">
     <label class="small" for="pw">Admin password</label>
-    <input id="pw" type="password" autocomplete="off" autocapitalize="off">
+    <div class="field">
+      <input id="pw" type="password" autocomplete="off" autocapitalize="off">
+      <button type="button" class="eye" id="eye" aria-label="Show password">
+        <svg id="eyeOpen" viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        <svg id="eyeShut" class="hidden" viewBox="0 0 24 24"><path d="M17.94 17.94A10.9 10.9 0 0 1 12 19C5 19 1 12 1 12a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+      </button>
+    </div>
     <button id="unlock">Unlock</button>
     <p id="lockErr" class="err"></p>
   </div>
@@ -245,6 +273,14 @@ function refresh() {
     render(data.codes);
   });
 }
+
+$("eye").onclick = function () {
+  var show = $("pw").type === "password";
+  $("pw").type = show ? "text" : "password";
+  $("eyeOpen").classList.toggle("hidden", show);
+  $("eyeShut").classList.toggle("hidden", !show);
+  $("eye").setAttribute("aria-label", show ? "Hide password" : "Show password");
+};
 
 $("unlock").onclick = function () {
   password = $("pw").value;
