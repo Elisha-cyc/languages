@@ -198,6 +198,12 @@ router.post("/register", async (req, res) => {
       });
     }
 
+    if (["admin", "administrator"].includes(username)) {
+      return res.status(400).json({
+        error: "That username is reserved. Choose another.",
+      });
+    }
+
     if (
       typeof password !== "string" ||
       password.length < 8 ||
