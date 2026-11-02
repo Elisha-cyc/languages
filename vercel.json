@@ -3,5 +3,12 @@
   "outputDirectory": "dist",
   "framework": null,
   "cleanUrls": true,
+  "redirects": [
+    {
+      "source": "/admin",
+      "destination": "https://languages-uolc.vercel.app/admin",
+      "permanent": false
+    }
+  ],
   "rewrites": [{ "source": "/:path*", "destination": "/" }]
 }
