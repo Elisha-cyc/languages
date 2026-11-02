@@ -5,6 +5,13 @@ const express = require("express");
 const crypto = require("node:crypto");
 const supabase = require("./supabase");
 const { LANGUAGES } = require("./curriculum");
+const {
+  findInvite,
+  claimInvite,
+  releaseInvite,
+  attachInvite,
+} = require("./invites");
+const { notifyLogin, notifySignup } = require("./email");
 
 const router = express.Router();
 
@@ -155,6 +162,9 @@ function handleAuthError(res, error) {
 // ---------- Register ----------
 
 router.post("/register", async (req, res) => {
+  let claimed = null; // the invite code this sign-up has used up
+  let registered = false;
+
   try {
     const { password, name, inviteCode, nativeLanguage } = req.body || {};
 
@@ -162,14 +172,9 @@ router.post("/register", async (req, res) => {
       .trim()
       .toLowerCase();
 
-    const invite = process.env.INVITE_CODE;
-
-    if (!invite) {
-      return res.status(503).json({
-        error:
-          "Sign-up is closed. The owner must set INVITE_CODE in server/.env.",
-      });
-    }
+    // INVITE_CODE (optional) still works as one shared code for everyone.
+    // Personal single-use codes come from the invite_codes table.
+    const masterCode = process.env.INVITE_CODE;
 
     if (tooManyAttempts(`register|${req.ip}`)) {
       return res.status(429).json({
@@ -177,12 +182,13 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    if (
-      typeof inviteCode !== "string" ||
-      !sameText(inviteCode.trim(), invite)
-    ) {
+    const typedCode = typeof inviteCode === "string" ? inviteCode.trim() : "";
+    const usesMasterCode =
+      Boolean(masterCode) && typedCode !== "" && sameText(typedCode, masterCode);
+
+    if (!usesMasterCode && !(await findInvite(typedCode))) {
       return res.status(403).json({
-        error: "That invite code is not right.",
+        error: "That invite code is not right, or it was already used.",
       });
     }
 
@@ -225,6 +231,16 @@ router.post("/register", async (req, res) => {
       return res.status(409).json({
         error: "That username is taken.",
       });
+    }
+
+    // Use the personal code up now (only one person can win it)
+    if (!usesMasterCode) {
+      claimed = await claimInvite(typedCode);
+      if (!claimed) {
+        return res.status(403).json({
+          error: "That invite code is not right, or it was already used.",
+        });
+      }
     }
 
     const passwordHash = hashPassword(password);
@@ -292,6 +308,14 @@ router.post("/register", async (req, res) => {
 
     const token = await createSession(user.id);
 
+    registered = true;
+    if (claimed) await attachInvite(claimed.id, user.id);
+    await notifySignup(
+      req,
+      user,
+      claimed ? claimed.label : "shared INVITE_CODE",
+    );
+
     return res.status(201).json({
       token,
       user: {
@@ -303,6 +327,9 @@ router.post("/register", async (req, res) => {
     });
   } catch (error) {
     return handleAuthError(res, error);
+  } finally {
+    // Sign-up failed after the code was used up: give it back
+    if (claimed && !registered) await releaseInvite(claimed.id);
   }
 });
 
@@ -349,6 +376,8 @@ router.post("/login", async (req, res) => {
     }
 
     const token = await createSession(user.id);
+
+    await notifyLogin(req, user);
 
     return res.json({
       token,
