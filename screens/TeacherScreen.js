@@ -15,23 +15,44 @@ import { useVoice } from "../voice";
 import { useQuietOnLeave } from "../useQuietOnLeave";
 
 const LEVELS = ["Beginner", "Intermediate", "Advanced"];
-const TOPICS = [
-  "Greetings",
-  "Introducing yourself",
-  "Polite words",
-  "Numbers 1 to 10",
-  "Food and drink",
-  "Getting around",
-];
+// Each level has its own topics (the server accepts the same lists)
+const TOPICS = {
+  Beginner: [
+    "Greetings",
+    "Introducing yourself",
+    "Polite words",
+    "Numbers 1 to 10",
+    "Food and drink",
+    "Getting around",
+  ],
+  Intermediate: [
+    "Ordering at a restaurant",
+    "Shopping and prices",
+    "Asking for directions",
+    "Talking about your day",
+    "Making plans with a friend",
+    "At the doctor",
+  ],
+  Advanced: [
+    "Job interview",
+    "Giving and defending opinions",
+    "Talking about the news",
+    "Telling a story about the past",
+    "Negotiating and persuading",
+    "Culture and traditions",
+  ],
+};
 
-const PASS_SCORE = 80; // percent of the words that must be heard
+// Percent of the words that must be heard. Longer sentences are harder to say
+// perfectly, so the bar is a little lower at the higher levels.
+const PASS_BY_LEVEL = { Beginner: 80, Intermediate: 75, Advanced: 70 };
 const SLOW = 0.7; // speaking speed of the teacher's model phrase
 
 export default function TeacherScreen() {
   const [phase, setPhase] = useState("setup"); // setup, loading, lesson, done
   const [language, setLanguage] = useState("French");
   const [level, setLevel] = useState("Beginner");
-  const [topic, setTopic] = useState(TOPICS[0]);
+  const [topic, setTopic] = useState(TOPICS.Beginner[0]);
   const [lesson, setLesson] = useState(null);
   const [index, setIndex] = useState(0);
   const [stage, setStage] = useState("teaching"); // teaching, ready, listening, result
@@ -50,6 +71,12 @@ export default function TeacherScreen() {
     stopSpeaking();
     voice.cancel();
   });
+
+  // Choosing a level also switches to that level's first topic
+  function chooseLevel(value) {
+    setLevel(value);
+    setTopic(TOPICS[value][0]);
+  }
 
   async function start() {
     setError(null);
@@ -127,7 +154,7 @@ export default function TeacherScreen() {
   async function judge(heard) {
     const step = lesson.steps[index];
     const check = compareSpeech(step.phrase, heard, language);
-    const pass = check.score >= PASS_SCORE;
+    const pass = check.score >= (PASS_BY_LEVEL[level] || 80);
 
     setAttempts((count) => count + 1);
     setResult({ heard, ...check, pass });
@@ -200,7 +227,7 @@ export default function TeacherScreen() {
             <Pressable
               key={value}
               style={[styles.chip, level === value && styles.chipOn]}
-              onPress={() => setLevel(value)}
+              onPress={() => chooseLevel(value)}
             >
               <Text
                 style={[styles.chipText, level === value && styles.chipTextOn]}
@@ -213,7 +240,7 @@ export default function TeacherScreen() {
 
         <Text style={styles.label}>Topic</Text>
         <View style={styles.chips}>
-          {TOPICS.map((value) => (
+          {TOPICS[level].map((value) => (
             <Pressable
               key={value}
               style={[styles.chip, topic === value && styles.chipOn]}
@@ -287,7 +314,11 @@ export default function TeacherScreen() {
       </Text>
 
       <View style={styles.card}>
-        <Text style={styles.phrase}>{step.phrase}</Text>
+        <Text
+          style={[styles.phrase, step.phrase.length > 40 && styles.phraseLong]}
+        >
+          {step.phrase}
+        </Text>
         {step.pronunciation ? (
           <Text style={styles.pronunciation}>{step.pronunciation}</Text>
         ) : null}
@@ -414,6 +445,7 @@ const styles = StyleSheet.create({
   good: { borderColor: "#2e9e5b", backgroundColor: "#eaf7ef" },
   bad: { borderColor: "#d98a2b", backgroundColor: "#fdf4e6" },
   phrase: { fontSize: 30, fontWeight: "bold", marginBottom: 6 },
+  phraseLong: { fontSize: 22 },
   pronunciation: { fontSize: 18, color: "#2a6fdb", marginBottom: 4 },
   meaning: { fontSize: 17, color: "#444" },
   small: { color: "#667085", fontSize: 14, marginTop: 4 },

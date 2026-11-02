@@ -16,16 +16,51 @@ const LEVELS = {
   Advanced: "C1-C2",
 };
 
-const TOPICS = [
-  "Greetings",
-  "Introducing yourself",
-  "Polite words",
-  "Numbers 1 to 10",
-  "Food and drink",
-  "Getting around",
-];
+// Each level has its own topics (the app shows the same lists)
+const TOPICS = {
+  Beginner: [
+    "Greetings",
+    "Introducing yourself",
+    "Polite words",
+    "Numbers 1 to 10",
+    "Food and drink",
+    "Getting around",
+  ],
+  Intermediate: [
+    "Ordering at a restaurant",
+    "Shopping and prices",
+    "Asking for directions",
+    "Talking about your day",
+    "Making plans with a friend",
+    "At the doctor",
+  ],
+  Advanced: [
+    "Job interview",
+    "Giving and defending opinions",
+    "Talking about the news",
+    "Telling a story about the past",
+    "Negotiating and persuading",
+    "Culture and traditions",
+  ],
+};
 
-const STEPS = 5;
+// How long the phrases should be at each level
+const PHRASE_LENGTH = {
+  Beginner: "very short phrases of 2 to 6 words",
+  Intermediate: "complete everyday sentences of 6 to 12 words",
+  Advanced: "natural, longer sentences of 10 to 20 words with richer grammar",
+};
+
+// Higher levels get more steps and a stronger grammar focus
+const STEPS_BY_LEVEL = { Beginner: 5, Intermediate: 5, Advanced: 6 };
+
+const GRAMMAR_FOCUS = {
+  Beginner: "Stay in the present tense with very common words.",
+  Intermediate:
+    'Each step practises one grammar point, such as the past tense, the future, comparisons or polite requests. Name that grammar point in the "teach" line.',
+  Advanced:
+    'Use connecting words, idioms and complex structures such as conditionals or the subjunctive. Each step has one nuance point, explained in the "tip" line.',
+};
 const LIMIT_PER_HOUR = 15;
 const recent = new Map();
 
@@ -71,7 +106,7 @@ function checkLesson(data) {
   const steps = [];
   for (const raw of data.steps) {
     const step = {
-      phrase: text(raw && raw.phrase, 120),
+      phrase: text(raw && raw.phrase, 200),
       meaning: text(raw && raw.meaning, 200),
       pronunciation: text(raw && raw.pronunciation, 160),
       teach: text(raw && raw.teach, 320),
@@ -119,7 +154,8 @@ router.post("/lesson", async (req, res) => {
   if (!Object.keys(LEVELS).includes(level)) {
     return res.status(400).json({ error: "Choose a level." });
   }
-  const chosenTopic = TOPICS.includes(topic) ? topic : TOPICS[0];
+  const levelTopics = TOPICS[level];
+  const chosenTopic = levelTopics.includes(topic) ? topic : levelTopics[0];
 
   if (!underLimit(userId)) {
     return res.status(429).json({
@@ -140,8 +176,10 @@ router.post("/lesson", async (req, res) => {
   ].join("\n");
 
   const user = [
-    `Plan a short spoken lesson of exactly ${STEPS} steps on the topic "${chosenTopic}" for a ${level} (${LEVELS[level]}) student.`,
-    `Each step teaches ONE short ${language} phrase that the student will repeat aloud. Keep phrases short and useful.`,
+    `Plan a short spoken lesson of exactly ${STEPS_BY_LEVEL[level]} steps on the topic "${chosenTopic}" for a ${level} (${LEVELS[level]}) student.`,
+    `Each step teaches ONE ${language} phrase that the student will repeat aloud. Use ${PHRASE_LENGTH[level]}, useful for this topic.`,
+    GRAMMAR_FOCUS[level],
+    "Each step must be different from the others and a little harder than the one before.",
     "Fields for every step:",
     `- "phrase": the phrase, written in ${language}.`,
     `- "meaning": its meaning in ${nativeLanguage}.`,
@@ -183,7 +221,10 @@ router.post("/lesson", async (req, res) => {
   }
 });
 
-router.get("/topics", (req, res) => res.json(TOPICS));
+router.get("/topics", (req, res) => {
+  const level = String(req.query.level || "Beginner");
+  res.json(TOPICS[level] || TOPICS.Beginner);
+});
 
 module.exports = router;
 module.exports.checkLesson = checkLesson;
