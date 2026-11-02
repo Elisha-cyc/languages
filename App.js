@@ -34,6 +34,7 @@ import HanziTestScreen from "./screens/HanziTestScreen";
 import { useEffect } from "react";
 import { Platform } from "react-native";
 import { setAudioModeAsync } from "expo-audio";
+import TeacherScreen from "./screens/TeacherScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -203,6 +204,11 @@ function Root() {
             name="HanziTest"
             component={HanziTestScreen}
             options={{ title: "Test" }}
+          />
+          <Stack.Screen
+            name="Teacher"
+            component={TeacherScreen}
+            options={{ title: "Learn with a teacher" }}
           />
         </Stack.Navigator>
       </NavigationContainer>
