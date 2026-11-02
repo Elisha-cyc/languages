@@ -51,7 +51,7 @@ export function listenOnce(language, { onResult, onError, onEnd }) {
     const message =
       event.error in ERRORS
         ? ERRORS[event.error]
-        : "Voice input failed. Try again.";
+        : `Voice input failed (${event.error || "unknown"}). Try again.`;
     if (message && onError) onError(message);
   };
   recognition.onend = () => onEnd && onEnd();
