@@ -1033,6 +1033,7 @@ app.get("/books/:id/text", async (req, res) => {
 
 app.use("/sleep", require("./sleep"));
 app.use("/teacher", require("./teacher"));
+app.use("/tts", require("./tts"));
 
 // ---------- Chat test ----------
 

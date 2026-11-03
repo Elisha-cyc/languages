@@ -1,4 +1,6 @@
 import * as Speech from "expo-speech";
+import { Platform } from "react-native";
+import { API_URL } from "./config";
 
 // Language names must match the names in curriculum.js
 const LANGUAGE_CODES = {
@@ -214,6 +216,163 @@ let run = 0; // numbers each request, so a new one can replace an older one
 
 // Returns { ok: true } once speech starts, or { ok: false, reason } if it could not.
 // options.onFinish runs when the last piece has been spoken.
+// ---------- Cloud voice (web) ----------
+// The server turns text into clear speech, so every phone sounds the same.
+// If it is not set up, or fails, the device voice below is used instead.
+
+let player = null; // one shared <audio>; the first tap "unlocks" it (needed on iPhone)
+let stopPlayback = null; // ends the clip that is playing right now
+let cloudOffUntil = 0; // when the server says "not set up", stop asking
+
+// A silent half-empty sound, played once on the first tap to unlock audio
+const SILENT_WAV =
+  "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+
+function getPlayer() {
+  if (!player && typeof Audio !== "undefined") player = new Audio();
+  return player;
+}
+
+if (Platform.OS === "web" && typeof document !== "undefined") {
+  const unlock = () => {
+    const audio = getPlayer();
+    if (!audio) return;
+    try {
+      audio.src = SILENT_WAV;
+      const started = audio.play();
+      if (started && started.catch) started.catch(() => {});
+    } catch (e) {
+      // not allowed yet; the next tap tries again
+    }
+  };
+  document.addEventListener("pointerdown", unlock, { once: true });
+  document.addEventListener("touchend", unlock, { once: true });
+}
+
+function stopCloud() {
+  if (player) {
+    try {
+      player.pause();
+    } catch (e) {
+      // nothing playing
+    }
+  }
+  if (stopPlayback) {
+    const end = stopPlayback;
+    stopPlayback = null;
+    end();
+  }
+}
+
+// Returns a sound address for one piece of text, or null if unavailable
+async function fetchCloudAudio(text, language, rate) {
+  const res = await fetch(`${API_URL}/tts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, language, rate }),
+  });
+  if (res.status === 501) {
+    cloudOffUntil = Infinity; // not set up on the server: do not ask again
+    return null;
+  }
+  if (!res.ok) {
+    cloudOffUntil = Date.now() + 60 * 1000; // trouble: rest for a minute
+    return null;
+  }
+  return URL.createObjectURL(await res.blob());
+}
+
+function playUrl(url) {
+  const audio = getPlayer();
+  let finish;
+  const ended = new Promise((resolve) => (finish = resolve));
+  audio.onended = () => finish(true);
+  audio.onerror = () => finish(false);
+  stopPlayback = () => finish(false);
+  audio.src = url;
+  let started;
+  try {
+    started = Promise.resolve(audio.play()).then(
+      () => true,
+      () => false,
+    );
+  } catch (e) {
+    started = Promise.resolve(false);
+  }
+  return { started, ended };
+}
+
+// Plays the text with the cloud voice. Returns false if it could not start,
+// so the caller can use the device voice instead.
+async function speakCloud(text, language, options, myRun) {
+  if (
+    Platform.OS !== "web" ||
+    typeof Audio === "undefined" ||
+    Date.now() < cloudOffUntil
+  ) {
+    return false;
+  }
+
+  const parts = chunkText(text, 450);
+  if (parts.length === 0) return false;
+  const rate = typeof options.rate === "number" ? options.rate : 0.9;
+
+  let firstUrl;
+  try {
+    firstUrl = await fetchCloudAudio(parts[0], language, rate);
+  } catch (e) {
+    cloudOffUntil = Date.now() + 60 * 1000;
+    return false;
+  }
+  if (!firstUrl) return false;
+  if (myRun !== run) {
+    URL.revokeObjectURL(firstUrl);
+    return true; // a newer request took over
+  }
+
+  const first = playUrl(firstUrl);
+  if (!(await first.started)) {
+    URL.revokeObjectURL(firstUrl);
+    return false; // the browser would not play it: use the device voice
+  }
+
+  // The rest plays in the background, fetching the next piece while one plays
+  (async () => {
+    let current = first;
+    let url = firstUrl;
+    for (let i = 0; i < parts.length; i++) {
+      const next =
+        i + 1 < parts.length
+          ? fetchCloudAudio(parts[i + 1], language, rate).catch(() => null)
+          : null;
+
+      const played = await current.ended;
+      URL.revokeObjectURL(url);
+
+      if (!played || myRun !== run || !next) {
+        if (next)
+          next.then((leftover) => leftover && URL.revokeObjectURL(leftover));
+        break;
+      }
+
+      url = await next;
+      if (!url) break;
+      if (myRun !== run) {
+        URL.revokeObjectURL(url);
+        break;
+      }
+      current = playUrl(url);
+      if (!(await current.started)) {
+        URL.revokeObjectURL(url);
+        break;
+      }
+    }
+    if (myRun === run && options.onFinish) options.onFinish();
+  })();
+
+  return true;
+}
+
 export async function speak(text, language, options = {}) {
   const code = LANGUAGE_CODES[language] || EXTRA_CODES[language];
   if (!text || !code)
@@ -222,6 +381,23 @@ export async function speak(text, language, options = {}) {
   const { onFinish, ...speechOptions } = options;
   const myRun = ++run;
   Speech.stop();
+  stopCloud();
+
+  // Clear cloud voice first (web); the device voice is the fallback
+  const cleaned = cleanForSpeech(text, language);
+  if (
+    cleaned &&
+    (await speakCloud(
+      cleaned,
+      language,
+      { rate: speechOptions.rate, onFinish },
+      myRun,
+    ))
+  ) {
+    report(null);
+    return { ok: true };
+  }
+  if (myRun !== run) return { ok: true };
 
   const voice = await findVoice(code);
   const known = voiceCache.length > 0;
@@ -233,7 +409,7 @@ export async function speak(text, language, options = {}) {
     return { ok: false, reason };
   }
 
-  const chunks = chunkText(cleanForSpeech(text, language));
+  const chunks = chunkText(cleaned);
   if (chunks.length === 0) {
     onFinish && onFinish();
     return { ok: true };
@@ -300,4 +476,5 @@ export function speakAndWait(text, language, options = {}) {
 export function stopSpeaking() {
   run++;
   Speech.stop();
+  stopCloud();
 }
