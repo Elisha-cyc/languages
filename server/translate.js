@@ -8,7 +8,7 @@
 // lesson never breaks because of a translation problem.
 
 const supabase = require("./supabase");
-const { complete } = require("./ai");
+const { completeJson } = require("./aijson");
 
 const BASE_LANGUAGE = process.env.NATIVE_LANGUAGE || "English";
 const MAX_BATCH = 40;
@@ -45,7 +45,7 @@ async function translateTexts(texts, target) {
   for (let i = 0; i < unique.length; i += MAX_BATCH) {
     const batch = unique.slice(i, i + MAX_BATCH);
 
-    const reply = await complete(
+    const reply = await completeJson(
       [
         {
           role: "system",
@@ -63,9 +63,7 @@ async function translateTexts(texts, target) {
           ].join("\n"),
         },
       ],
-      2000,
-      process.env.TUTOR_MODEL || process.env.AI_MODEL,
-      { response_format: { type: "json_object" } },
+      3000,
     );
 
     const items = parseItems(reply);

@@ -5,7 +5,8 @@
 // student repeats, and the app checks what was heard.
 
 const express = require("express");
-const { complete, PERSONAS } = require("./ai");
+const { PERSONAS } = require("./ai");
+const { completeJson } = require("./aijson");
 const { LANGUAGES, PRONUNCIATION_GUIDE } = require("./curriculum");
 
 const router = express.Router();
@@ -198,21 +199,19 @@ router.post("/lesson", async (req, res) => {
     .join("\n");
 
   try {
-    const reply = await complete(
+    const reply = await completeJson(
       [
         { role: "system", content: system },
         { role: "user", content: user },
       ],
-      2500,
-      process.env.TUTOR_MODEL || process.env.AI_MODEL,
-      { response_format: { type: "json_object" } },
+      4000, // room for the model's own thinking as well as the lesson
     );
 
     const lesson = checkLesson(parseObject(reply));
     res.json({ ...lesson, teacher, language, level, topic: chosenTopic });
   } catch (err) {
     console.error("Teacher error:", String(err.message).slice(0, 300));
-    const busy = String(err.message).startsWith("429");
+    const busy = /rate limit|\b429\b/i.test(String(err.message));
     res.status(busy ? 429 : 502).json({
       error: busy
         ? "The AI is busy. Try again in a minute."

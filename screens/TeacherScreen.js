@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { API_URL, NATIVE_LANGUAGE } from "../config";
 import LanguagePicker from "../components/LanguagePicker";
@@ -78,7 +79,28 @@ export default function TeacherScreen() {
     setTopic(TOPICS[value][0]);
   }
 
+  // Safari on iPhone only lets a page speak if speech started from a tap.
+  // The lesson is fetched first (which takes a few seconds), so start a silent
+  // utterance now, while we are still inside the tap.
+  function unlockSpeech() {
+    if (
+      Platform.OS === "web" &&
+      typeof window !== "undefined" &&
+      window.speechSynthesis &&
+      typeof SpeechSynthesisUtterance !== "undefined"
+    ) {
+      try {
+        const silent = new SpeechSynthesisUtterance(" ");
+        silent.volume = 0;
+        window.speechSynthesis.speak(silent);
+      } catch (e) {
+        // speech just stays as it was
+      }
+    }
+  }
+
   async function start() {
+    unlockSpeech();
     setError(null);
     setPhase("loading");
     try {
@@ -196,6 +218,7 @@ export default function TeacherScreen() {
   }
 
   function again() {
+    unlockSpeech();
     setPhase("lesson");
     play(lesson, 0);
   }
