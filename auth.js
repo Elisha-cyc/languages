@@ -13,34 +13,40 @@ import {
 } from "./config";
 
 const KEY = "lingua-session";
-let token = null;
-let onUnauthorized = null;
+const authState =
+  globalThis.__linguaAuthState ||
+  (globalThis.__linguaAuthState = {
+    token: null,
+    onUnauthorized: null,
+    realFetch: globalThis.fetch.bind(globalThis),
+  });
 
 // Every request to our server carries the login token, so no screen has to change
-if (!globalThis.__linguaFetchPatched) {
-  globalThis.__linguaFetchPatched = true;
-  const realFetch = globalThis.fetch.bind(globalThis);
+globalThis.fetch = async (input, init = {}) => {
+  const url = typeof input === "string" ? input : (input && input.url) || "";
+  const mine = url.startsWith(API_URL);
+  let options = init;
 
-  globalThis.fetch = async (input, init = {}) => {
-    const url = typeof input === "string" ? input : (input && input.url) || "";
-    const mine = url.startsWith(API_URL);
-    const options =
-      mine && token
-        ? {
-            ...init,
-            headers: {
-              ...(init.headers || {}),
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        : init;
+  if (mine && authState.token) {
+    const requestHeaders =
+      init.headers ||
+      (input && typeof input === "object" ? input.headers : undefined);
+    const headers = new Headers(requestHeaders);
+    headers.set("Authorization", `Bearer ${authState.token}`);
+    options = { ...init, headers };
+  }
 
-    const res = await realFetch(input, options);
-    if (mine && res.status === 401 && !url.includes("/auth/") && onUnauthorized)
-      onUnauthorized();
-    return res;
-  };
-}
+  const res = await authState.realFetch(input, options);
+  if (
+    mine &&
+    res.status === 401 &&
+    !url.includes("/auth/") &&
+    authState.onUnauthorized
+  ) {
+    authState.onUnauthorized();
+  }
+  return res;
+};
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -50,15 +56,15 @@ export function AuthProvider({ children }) {
 
 
   const signOutLocal = useCallback(async () => {
-    token = null;
+    authState.token = null;
     await AsyncStorage.removeItem(KEY);
     setState({ loading: false, user: null });
   }, []);
 
   useEffect(() => {
-    onUnauthorized = signOutLocal;
+    authState.onUnauthorized = signOutLocal;
     return () => {
-      onUnauthorized = null;
+      authState.onUnauthorized = null;
     };
   }, [signOutLocal]);
 
@@ -68,7 +74,7 @@ export function AuthProvider({ children }) {
       try {
         const raw = await AsyncStorage.getItem(KEY);
         if (raw) {
-          token = JSON.parse(raw).token;
+          authState.token = JSON.parse(raw).token;
           const res = await fetch(`${API_URL}/auth/me`);
           if (res.ok) {
             const me = await res.json();
@@ -76,7 +82,7 @@ export function AuthProvider({ children }) {
             setState({ loading: false, user: me });
             return;
           }
-          token = null;
+          authState.token = null;
           await AsyncStorage.removeItem(KEY);
         }
       } catch (e) {
@@ -102,8 +108,8 @@ export function AuthProvider({ children }) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Something went wrong");
 
-    token = data.token;
-    await AsyncStorage.setItem(KEY, JSON.stringify({ token }));
+    authState.token = data.token;
+    await AsyncStorage.setItem(KEY, JSON.stringify({ token: authState.token }));
     setConfigNativeLanguage(data.user.nativeLanguage);
     setState({ loading: false, user: data.user });
   }
