@@ -113,6 +113,7 @@ function checkLesson(data) {
       teach: text(raw && raw.teach, 320),
       tip: text(raw && raw.tip, 320),
       praise: text(raw && raw.praise, 200),
+      perfect: text(raw && raw.perfect, 200),
       retry: text(raw && raw.retry, 200),
     };
     if (
@@ -189,11 +190,12 @@ router.post("/lesson", async (req, res) => {
     isChinese
       ? `- "tip": one sentence in ${nativeLanguage} about the tone of each syllable.`
       : `- "tip": one sentence in ${nativeLanguage} about stress or the trickiest sound.`,
-    `- "praise": one short encouraging line in ${nativeLanguage}.`,
+    `- "praise": one short encouraging line in ${nativeLanguage}, for a good attempt.`,
+    `- "perfect": one short, delighted line in ${nativeLanguage} for a perfect attempt.`,
     `- "retry": one short, kind line in ${nativeLanguage} asking the student to try again.`,
     `Top-level fields: "title" (in ${nativeLanguage}), "greeting" (you introduce yourself as ${teacher} and the topic, 1 or 2 sentences in ${nativeLanguage}), "closing" (a short, warm goodbye in ${nativeLanguage}).`,
     `IMPORTANT: your spoken lines (teach, tip, praise, retry, greeting, closing) must contain no ${language} words and no phrase text. Say "this phrase" instead. The phrase is spoken separately.`,
-    `Return exactly: {"title":"...","greeting":"...","steps":[{"phrase":"...","meaning":"...",${guide ? '"pronunciation":"...",' : ""}"teach":"...","tip":"...","praise":"...","retry":"..."}],"closing":"..."}`,
+    `Return exactly: {"title":"...","greeting":"...","steps":[{"phrase":"...","meaning":"...",${guide ? '"pronunciation":"...",' : ""}"teach":"...","tip":"...","praise":"...","perfect":"...","retry":"..."}],"closing":"..."}`,
   ]
     .filter(Boolean)
     .join("\n");

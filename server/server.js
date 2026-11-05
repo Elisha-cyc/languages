@@ -36,6 +36,11 @@ function loadPdfParse() {
 
 const app = express();
 
+// On Vercel every request arrives through a proxy. Without this, the server
+// sees the proxy's address as everybody's address, so the sign-up and login
+// limits would count ALL users together and lock new people out.
+app.set("trust proxy", 1);
+
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
@@ -1034,6 +1039,7 @@ app.get("/books/:id/text", async (req, res) => {
 app.use("/sleep", require("./sleep"));
 app.use("/teacher", require("./teacher"));
 app.use("/tts", require("./tts"));
+app.use("/pronounce", require("./pronounce"));
 
 // ---------- Chat test ----------
 
