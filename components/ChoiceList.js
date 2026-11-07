@@ -1,6 +1,11 @@
 import { StyleSheet, Text, View, Pressable, ScrollView } from "react-native";
+import { LoadingAnimation } from "./AppAnimation";
 
 export function Message({ text }) {
+  if (/^loading(?:\.\.\.|…)?$/i.test(String(text || "").trim())) {
+    return <LoadingAnimation label="Getting your learning space ready" />;
+  }
+
   return (
     <View style={styles.message}>
       <Text>{text}</Text>

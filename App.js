@@ -1,4 +1,4 @@
-import { View, Text, ActivityIndicator } from "react-native";
+import { View, Text } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -31,11 +31,12 @@ import HanziLessonScreen from "./screens/HanziLessonScreen";
 import HanziStrokesScreen from "./screens/HanziStrokesScreen";
 import HanziWriteScreen from "./screens/HanziWriteScreen";
 import HanziTestScreen from "./screens/HanziTestScreen";
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Platform } from "react-native";
 import { setAudioModeAsync } from "expo-audio";
 import TeacherScreen from "./screens/TeacherScreen";
 import PinyinTeacherScreen from "./screens/PinyinTeacherScreen";
+import { IntroAnimation, LoadingAnimation } from "./components/AppAnimation";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -81,13 +82,13 @@ function MainTabs() {
 
 function Root() {
   const { user, loading } = useAuth();
+  const [introDone, setIntroDone] = useState(false);
+  const finishIntro = useCallback(() => setIntroDone(true), []);
+
+  if (!introDone) return <IntroAnimation onFinish={finishIntro} />;
 
   if (loading) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator />
-      </View>
-    );
+    return <LoadingAnimation label="Getting LinguaApp ready" />;
   }
   if (!user) return <AuthScreen />;
 
