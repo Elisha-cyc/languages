@@ -90,12 +90,12 @@ async function synthesize(req, res, returnAudioKey = false) {
   const wanted = Number(req.body.rate);
   const rate = Number.isFinite(wanted)
     ? Math.min(1.3, Math.max(0.5, wanted))
-    : 0.9;
+    : 1;
   const percent = Math.round((rate - 1) * 100);
 
   const cacheKey = crypto
     .createHash("sha256")
-    .update(`${voice[1]}|${percent}|clear-v2|${spoken}`)
+    .update(`${voice[1]}|${percent}|natural-chat-v3|${spoken}`)
     .digest("hex");
 
   try {
@@ -121,9 +121,9 @@ async function synthesize(req, res, returnAudioKey = false) {
 
     // 2) Ask Azure
     const ssml =
-      `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${voice[0]}">` +
-      `<voice name="${voice[1]}"><prosody rate="${percent >= 0 ? "+" : ""}${percent}%" volume="+20%">` +
-      `${escapeXml(spoken)}</prosody></voice></speak>`;
+      `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="http://www.w3.org/2001/mstts" xml:lang="${voice[0]}">` +
+      `<voice name="${voice[1]}"><mstts:express-as style="chat"><prosody rate="${percent >= 0 ? "+" : ""}${percent}%">` +
+      `${escapeXml(spoken)}</prosody></mstts:express-as></voice></speak>`;
 
     const azure = await fetch(
       `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`,
@@ -132,7 +132,7 @@ async function synthesize(req, res, returnAudioKey = false) {
         headers: {
           "Ocp-Apim-Subscription-Key": key,
           "Content-Type": "application/ssml+xml",
-          "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
+          "X-Microsoft-OutputFormat": "audio-24khz-160kbitrate-mono-mp3",
           "User-Agent": "LinguaApp",
         },
         body: ssml,

@@ -459,7 +459,8 @@ async function speakCloud(text, language, options, myRun) {
   const parts = chunkText(text, Platform.OS === "web" ? 450 : SPEAK_CHUNK);
   if (parts.length === 0) return false;
   if (Date.now() < cloudOffUntil) return false;
-  const rate = typeof options.rate === "number" ? options.rate : 0.8;
+  // Use the voice's natural speaking pace unless a lesson explicitly asks for slow speech.
+  const rate = typeof options.rate === "number" ? options.rate : 1;
 
   if (Platform.OS !== "web") {
     for (const part of parts) {
@@ -605,7 +606,7 @@ export async function speak(text, language, options = {}) {
       Speech.speak(chunks[index], {
         language: code,
         ...(voice ? { voice: voice.identifier } : {}),
-        rate: 0.8,
+        rate: 1,
         volume: 1,
         useApplicationAudioSession: true,
         ...speechOptions,
