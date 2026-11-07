@@ -64,7 +64,7 @@ const escapeXml = (value) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
 
-router.post("/", async (req, res) => {
+async function synthesize(req, res, returnAudioKey = false) {
   const key = process.env.AZURE_SPEECH_KEY;
   const region = process.env.AZURE_SPEECH_REGION;
   if (!key || !region) {
@@ -95,7 +95,7 @@ router.post("/", async (req, res) => {
 
   const cacheKey = crypto
     .createHash("sha256")
-    .update(`${voice[1]}|${percent}|${spoken}`)
+    .update(`${voice[1]}|${percent}|clear-v2|${spoken}`)
     .digest("hex");
 
   try {
@@ -107,6 +107,7 @@ router.post("/", async (req, res) => {
       .maybeSingle();
 
     if (saved && saved.audio) {
+      if (returnAudioKey) return res.json({ key: cacheKey });
       res.set("Content-Type", "audio/mpeg");
       res.set("X-Voice-Cache", "hit");
       return res.send(Buffer.from(saved.audio, "base64"));
@@ -121,7 +122,7 @@ router.post("/", async (req, res) => {
     // 2) Ask Azure
     const ssml =
       `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${voice[0]}">` +
-      `<voice name="${voice[1]}"><prosody rate="${percent >= 0 ? "+" : ""}${percent}%">` +
+      `<voice name="${voice[1]}"><prosody rate="${percent >= 0 ? "+" : ""}${percent}%" volume="+20%">` +
       `${escapeXml(spoken)}</prosody></voice></speak>`;
 
     const azure = await fetch(
@@ -153,7 +154,14 @@ router.post("/", async (req, res) => {
     const { error: saveError } = await supabase
       .from("tts_cache")
       .upsert({ key: cacheKey, language, audio: audio.toString("base64") });
-    if (saveError) console.error("Voice cache save failed:", saveError.message);
+    if (saveError) {
+      console.error("Voice cache save failed:", saveError.message);
+      if (returnAudioKey) {
+        return res.status(502).json({ error: "The cloud voice could not be saved." });
+      }
+    }
+
+    if (returnAudioKey) return res.json({ key: cacheKey });
 
     res.set("Content-Type", "audio/mpeg");
     res.set("X-Voice-Cache", "miss");
@@ -161,6 +169,39 @@ router.post("/", async (req, res) => {
   } catch (err) {
     console.error("Cloud voice error:", String(err.message).slice(0, 200));
     res.status(502).json({ error: "The cloud voice is unavailable." });
+  }
+}
+
+router.post("/", (req, res) => synthesize(req, res));
+router.post("/url", (req, res) => synthesize(req, res, true));
+
+router.get("/audio/:key", async (req, res) => {
+  const userId = req.user && req.user.id;
+  if (!userId) return res.status(401).json({ error: "Please log in." });
+
+  const key = String(req.params.key || "");
+  if (!/^[a-f0-9]{64}$/i.test(key)) {
+    return res.status(400).json({ error: "Invalid audio key." });
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("tts_cache")
+      .select("audio")
+      .eq("key", key)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data || !data.audio) {
+      return res.status(404).json({ error: "That voice clip is not available." });
+    }
+
+    res.set("Content-Type", "audio/mpeg");
+    res.set("Cache-Control", "private, no-store");
+    return res.send(Buffer.from(data.audio, "base64"));
+  } catch (err) {
+    console.error("Voice clip error:", String(err.message).slice(0, 200));
+    return res.status(502).json({ error: "The cloud voice is unavailable." });
   }
 });
 

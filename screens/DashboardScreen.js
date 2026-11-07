@@ -23,6 +23,12 @@ export default function DashboardScreen({ navigation }) {
         onPress={() => navigation.navigate("HanziHome")}
       />
       <Tile
+        icon="🗣️"
+        title="Chinese pinyin teacher"
+        text="Practice initials, finals, and tones aloud"
+        onPress={() => navigation.navigate("PinyinTeacher")}
+      />
+      <Tile
         icon="💬"
         title="Talk to an AI partner"
         text="Text or voice conversation"

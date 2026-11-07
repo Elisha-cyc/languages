@@ -50,6 +50,7 @@ globalThis.fetch = async (input, init = {}) => {
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
+export const getAuthToken = () => authState.token;
 
 export function AuthProvider({ children }) {
   const [state, setState] = useState({ loading: true, user: null });

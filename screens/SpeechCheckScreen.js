@@ -1,5 +1,14 @@
-import { useState, useEffect } from "react";
-import { StyleSheet, Text, View, Pressable, ScrollView } from "react-native";
+import { useState, useEffect, useCallback } from "react";
+import {
+  ActivityIndicator,
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+  Pressable,
+  ScrollView,
+} from "react-native";
+import { useIsFocused } from "@react-navigation/native";
 import { speak, stopSpeaking, voiceReport } from "../speech";
 import { useQuietOnLeave } from "../useQuietOnLeave";
 
@@ -29,13 +38,25 @@ const SAMPLES = {
 export default function SpeechCheckScreen() {
   const [report, setReport] = useState(null);
   const [results, setResults] = useState({});
+  const [refreshing, setRefreshing] = useState(false);
+  const isFocused = useIsFocused();
 
   useQuietOnLeave(stopSpeaking);
 
-  useEffect(() => {
-    voiceReport().then(setReport);
-    return () => stopSpeaking();
+  const refreshVoices = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      setReport(await voiceReport({ refresh: true }));
+    } finally {
+      setRefreshing(false);
+    }
   }, []);
+
+  useEffect(() => {
+    if (!isFocused) return;
+    refreshVoices();
+    return () => stopSpeaking();
+  }, [isFocused, refreshVoices]);
 
   async function play(language) {
     setResults((current) => ({ ...current, [language]: "Playing..." }));
@@ -46,10 +67,11 @@ export default function SpeechCheckScreen() {
     }));
   }
 
-  if (!report) {
+  if (!report || refreshing) {
     return (
       <View style={styles.center}>
-        <Text>Checking the voices on this device...</Text>
+        <ActivityIndicator />
+        <Text style={styles.note}>Checking the voices on this device...</Text>
       </View>
     );
   }
@@ -63,10 +85,19 @@ export default function SpeechCheckScreen() {
         This device reports {report.total} voices, and has a voice for{" "}
         {withVoice} of our {report.rows.length} languages.
       </Text>
+      <Text style={styles.help}>
+        Phone voices are installed in your phone settings. After installing a
+        voice, return here and refresh the list. Where cloud speech is enabled,
+        the app can use it when a phone voice is missing.
+      </Text>
+      <Pressable style={styles.refresh} onPress={refreshVoices}>
+        <Text style={styles.refreshText}>Refresh voice list</Text>
+      </Pressable>
       {report.total === 0 && (
         <Text style={styles.warning}>
-          No voices were reported. In Chrome the list can take a moment to load,
-          so reload the page and open this screen again.
+          {Platform.OS === "web"
+            ? "No voices were reported. In Chrome the list can take a moment to load, so refresh this screen."
+            : "This phone did not report any installed voices. Follow the steps below to add speech voices in system settings."}
         </Text>
       )}
 
@@ -87,20 +118,26 @@ export default function SpeechCheckScreen() {
         </View>
       ))}
 
-      <Text style={styles.heading}>If a language has no voice</Text>
-      <Text style={styles.help}>
-        Windows: Settings, Time and language, Speech, Manage voices, then add
-        the language and restart the browser. Chrome often adds its own online
-        voices too, which need internet.
-      </Text>
-      <Text style={styles.help}>
-        Android: Settings, System, Languages, Text-to-speech output, then
-        install the voice data for the language.
-      </Text>
-      <Text style={styles.help}>
-        iPhone: Settings, Accessibility, Spoken Content, Voices, then download
-        one. The silent switch also mutes speech.
-      </Text>
+      <Text style={styles.heading}>Install a missing phone voice</Text>
+      {Platform.OS === "android" ? (
+        <Text style={styles.help}>
+          Android: open Settings → Accessibility → Text-to-speech output (on
+          some phones: System or General management → Text-to-speech output).
+          Choose Speech Services by Google, tap its settings button, then
+          Install voice data and download the language. Come back and refresh.
+        </Text>
+      ) : Platform.OS === "ios" ? (
+        <Text style={styles.help}>
+          iPhone: open Settings → Accessibility → Spoken Content → Voices. Pick
+          the language and download a voice. Come back and refresh. Turn off
+          Silent Mode if you cannot hear speech.
+        </Text>
+      ) : (
+        <Text style={styles.help}>
+          Windows: Settings → Time and language → Speech → Manage voices. Add a
+          voice, then reload the page. Chrome may also provide online voices.
+        </Text>
+      )}
     </ScrollView>
   );
 }
@@ -152,4 +189,13 @@ const styles = StyleSheet.create({
   playText: { color: "#2a6fdb", fontSize: 15 },
   heading: { fontSize: 18, fontWeight: "bold", marginTop: 24, marginBottom: 6 },
   help: { fontSize: 14, color: "#555", lineHeight: 21, marginTop: 6 },
+  refresh: {
+    alignSelf: "flex-start",
+    backgroundColor: "#dbe7ff",
+    borderRadius: 18,
+    paddingVertical: 9,
+    paddingHorizontal: 16,
+    marginTop: 8,
+  },
+  refreshText: { color: "#2a6fdb", fontWeight: "600" },
 });

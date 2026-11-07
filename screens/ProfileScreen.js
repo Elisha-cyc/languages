@@ -15,8 +15,8 @@ export default function ProfileScreen({ navigation }) {
 
       <Tile
         icon="🔊"
-        title="Check speech on this device"
-        text="See which languages have a voice"
+        title="Manage speech voices"
+        text="Check voices, get install steps, and refresh the list"
         onPress={() => navigation.navigate("SpeechCheck")}
       />
 

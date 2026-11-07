@@ -35,6 +35,7 @@ import { useEffect } from "react";
 import { Platform } from "react-native";
 import { setAudioModeAsync } from "expo-audio";
 import TeacherScreen from "./screens/TeacherScreen";
+import PinyinTeacherScreen from "./screens/PinyinTeacherScreen";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -210,6 +211,11 @@ function Root() {
             component={TeacherScreen}
             options={{ title: "Learn with a teacher" }}
           />
+          <Stack.Screen
+            name="PinyinTeacher"
+            component={PinyinTeacherScreen}
+            options={{ title: "Chinese pinyin teacher" }}
+          />
         </Stack.Navigator>
       </NavigationContainer>
     </View>
@@ -221,7 +227,11 @@ export default function App() {
   useEffect(() => {
     if (Platform.OS === "web") return;
     try {
-      setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+      setAudioModeAsync({
+        playsInSilentMode: true,
+        interruptionMode: "doNotMix",
+        shouldRouteThroughEarpiece: false,
+      }).catch(() => {});
     } catch (e) {
       // not available: speech still works with the switch off
     }

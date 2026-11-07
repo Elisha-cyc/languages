@@ -1,6 +1,8 @@
 import * as Speech from "expo-speech";
+import { createAudioPlayer } from "expo-audio";
 import { Platform } from "react-native";
 import { API_URL } from "./config";
+import { getAuthToken } from "./auth";
 
 // Language names must match the names in curriculum.js
 const LANGUAGE_CODES = {
@@ -58,7 +60,8 @@ function report(message) {
 
 let voiceCache = [];
 
-async function loadVoices() {
+async function loadVoices(refresh = false) {
+  if (refresh) voiceCache = [];
   if (voiceCache.length > 0) return voiceCache;
   try {
     let voices = await Speech.getAvailableVoicesAsync();
@@ -122,8 +125,8 @@ export async function findVoice(code) {
 }
 
 // For the speech check screen: which of our languages have a voice on this device
-export async function voiceReport() {
-  const voices = await loadVoices();
+export async function voiceReport({ refresh = false } = {}) {
+  const voices = await loadVoices(refresh);
   const rows = [];
   for (const language of SPEECH_LANGUAGES) {
     const voice = await findVoice(LANGUAGE_CODES[language]);
@@ -222,6 +225,9 @@ let run = 0; // numbers each request, so a new one can replace an older one
 
 let player = null; // one shared <audio>; the first tap "unlocks" it (needed on iPhone)
 let stopPlayback = null; // ends the clip that is playing right now
+let nativePlayer = null;
+let nativeSubscription = null;
+let stopNativePlayback = null;
 let cloudOffUntil = 0; // when the server says "not set up", stop asking
 
 // A silent half-empty sound, played once on the first tap to unlock audio
@@ -262,6 +268,11 @@ function stopCloud() {
     stopPlayback = null;
     end();
   }
+  if (stopNativePlayback) {
+    const end = stopNativePlayback;
+    stopNativePlayback = null;
+    end();
+  }
 }
 
 // Returns a sound address for one piece of text, or null if unavailable
@@ -280,6 +291,80 @@ async function fetchCloudAudio(text, language, rate) {
     return null;
   }
   return URL.createObjectURL(await res.blob());
+}
+
+async function prepareNativeCloudAudio(text, language, rate) {
+  const res = await fetch(`${API_URL}/tts/url`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, language, rate }),
+  });
+  if (res.status === 501) {
+    cloudOffUntil = Infinity;
+    return null;
+  }
+  if (!res.ok) {
+    cloudOffUntil = Date.now() + 60 * 1000;
+    return null;
+  }
+  const { key } = await res.json();
+  if (!/^[a-f0-9]{64}$/i.test(key || "")) {
+    cloudOffUntil = Date.now() + 60 * 1000;
+    return null;
+  }
+  return `${API_URL}/tts/audio/${key}`;
+}
+
+function playNativeUrl(url, myRun) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let started = false;
+    let timer;
+
+    const player = createAudioPlayer(
+      {
+        uri: url,
+        headers: { Authorization: `Bearer ${getAuthToken()}` },
+      },
+      { updateInterval: 250 },
+    );
+    // Keep cloud narration at full media volume on every supported phone.
+    player.volume = 1;
+    nativePlayer = player;
+
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      nativeSubscription?.remove();
+      nativeSubscription = null;
+      if (nativePlayer === player) nativePlayer = null;
+      if (stopNativePlayback === stop) stopNativePlayback = null;
+      try {
+        player.pause();
+        player.release();
+      } catch (e) {
+        // The player may already have been released after a native error.
+      }
+      resolve(ok);
+    };
+    const stop = () => finish(false);
+    stopNativePlayback = stop;
+
+    nativeSubscription = player.addListener("playbackStatusUpdate", (status) => {
+      if (status.error) return finish(false);
+      if (status.isLoaded && status.playing) started = true;
+      if (status.didJustFinish) finish(true);
+    });
+
+    timer = setTimeout(() => finish(started), 30000);
+    if (myRun !== run) return finish(false);
+    try {
+      player.play();
+    } catch (e) {
+      finish(false);
+    }
+  });
 }
 
 function playUrl(url) {
@@ -305,17 +390,35 @@ function playUrl(url) {
 // Plays the text with the cloud voice. Returns false if it could not start,
 // so the caller can use the device voice instead.
 async function speakCloud(text, language, options, myRun) {
-  if (
-    Platform.OS !== "web" ||
-    typeof Audio === "undefined" ||
-    Date.now() < cloudOffUntil
-  ) {
-    return false;
+  const parts = chunkText(text, Platform.OS === "web" ? 450 : SPEAK_CHUNK);
+  if (parts.length === 0) return false;
+  if (Date.now() < cloudOffUntil) return false;
+  const rate = typeof options.rate === "number" ? options.rate : 0.8;
+
+  if (Platform.OS !== "web") {
+    for (const part of parts) {
+      let url;
+      try {
+        url = await prepareNativeCloudAudio(part, language, rate);
+      } catch (e) {
+        cloudOffUntil = Date.now() + 60 * 1000;
+        return false;
+      }
+      if (!url) return false;
+      if (myRun !== run) return true;
+      const played = await playNativeUrl(url, myRun);
+      if (!played) {
+        if (myRun !== run) return true;
+        cloudOffUntil = Date.now() + 60 * 1000;
+        return false;
+      }
+      if (myRun !== run) return true;
+    }
+    if (options.onFinish) options.onFinish();
+    return true;
   }
 
-  const parts = chunkText(text, 450);
-  if (parts.length === 0) return false;
-  const rate = typeof options.rate === "number" ? options.rate : 0.9;
+  if (typeof Audio === "undefined") return false;
 
   let firstUrl;
   try {
@@ -383,10 +486,14 @@ export async function speak(text, language, options = {}) {
   Speech.stop();
   stopCloud();
 
-  // Clear cloud voice first (web); the device voice is the fallback
   const cleaned = cleanForSpeech(text, language);
+  const voice = await findVoice(code);
+  if (myRun !== run) return { ok: true };
+
+  // Use a cloud voice on phones only when the requested device voice is missing.
   if (
     cleaned &&
+    (Platform.OS === "web" || !voice) &&
     (await speakCloud(
       cleaned,
       language,
@@ -399,7 +506,6 @@ export async function speak(text, language, options = {}) {
   }
   if (myRun !== run) return { ok: true };
 
-  const voice = await findVoice(code);
   const known = voiceCache.length > 0;
   if (myRun !== run) return { ok: true }; // a newer request took over
 
@@ -431,7 +537,9 @@ export async function speak(text, language, options = {}) {
       Speech.speak(chunks[index], {
         language: code,
         ...(voice ? { voice: voice.identifier } : {}),
-        rate: 0.85,
+        rate: 0.8,
+        volume: 1,
+        useApplicationAudioSession: true,
         ...speechOptions,
         onStart: () => {
           if (started) return;
