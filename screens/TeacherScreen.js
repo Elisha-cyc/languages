@@ -50,6 +50,13 @@ const TOPICS = {
     "Culture and traditions",
   ],
 };
+const CHINESE_TOPICS = {
+  Beginner: ["HSK 1 words and simple sentences", "HSK 1 greetings and introductions", "HSK 1 numbers, dates and time", "HSK 1 family, food and daily life", "HSK 1 question words and sentence order"],
+  Intermediate: ["HSK 2–3 everyday conversations", "HSK 2–3 travel, shopping and directions", "HSK 2–3 experiences and plans", "HSK 2–3 comparisons and reasons", "HSK 2–3 connected sentences and short stories"],
+  Advanced: ["HSK 4–6 extended conversation", "HSK 4–6 opinions and explanations", "HSK 4–6 news, culture and society", "HSK 4–6 formal and written Chinese", "HSK 4–6 idioms, nuance and argument"],
+};
+const topicsFor = (language, level) =>
+  /chinese/i.test(language) ? CHINESE_TOPICS[level] : TOPICS[level];
 
 const PERFECT = 95; // score from this up: "Perfect"
 const GOOD = 80; // from this up: good enough to move on
@@ -137,7 +144,12 @@ export default function TeacherScreen() {
   // Choosing a level also switches to that level's first topic
   function chooseLevel(value) {
     setLevel(value);
-    setTopic(TOPICS[value][0]);
+    setTopic(topicsFor(language, value)[0]);
+  }
+
+  function chooseLanguage(value) {
+    setLanguage(value);
+    setTopic(topicsFor(value, level)[0]);
   }
 
   async function start() {
@@ -536,9 +548,12 @@ export default function TeacherScreen() {
         </Text>
 
         <Text style={styles.label}>Language</Text>
-        <LanguagePicker value={language} onChange={setLanguage} />
+        <LanguagePicker value={language} onChange={chooseLanguage} />
 
         <Text style={styles.label}>Your level</Text>
+        {/chinese/i.test(language) && (
+          <Text style={styles.note}>Chinese curriculum: Beginner = HSK 1 · Intermediate = HSK 2–3 · Advanced = HSK 4–6. The lessons include HSK words, grammar, pinyin and tones.</Text>
+        )}
         <View style={styles.chips}>
           {LEVELS.map((value) => (
             <Pressable
@@ -557,7 +572,7 @@ export default function TeacherScreen() {
 
         <Text style={styles.label}>Topic</Text>
         <View style={styles.chips}>
-          {TOPICS[level].map((value) => (
+          {topicsFor(language, level).map((value) => (
             <Pressable
               key={value}
               style={[styles.chip, topic === value && styles.chipOn]}

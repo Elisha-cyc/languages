@@ -328,6 +328,11 @@ export default function BookSearchScreen({ navigation, route }) {
                 write a short AI retelling in {language} at your level instead.
                 It is not the real book.
               </Text>
+              {/chinese/i.test(language) && (
+                <Text style={styles.note}>
+                  Chinese reading levels follow HSK 1, HSK 2–3, and HSK 4–6 vocabulary and grammar.
+                </Text>
+              )}
 
               <View style={styles.levels}>
                 {LEVELS.map((value) => (

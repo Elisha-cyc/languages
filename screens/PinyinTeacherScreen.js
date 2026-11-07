@@ -145,7 +145,8 @@ export default function PinyinTeacherScreen() {
       <Text style={styles.title}>Chinese pinyin teacher</Text>
       <Text style={styles.note}>
         Hear a model, learn how to form the sound, then repeat it. Work through
-        initials, finals, and all four tones.
+        initials, finals, and all four tones. This is the pronunciation
+        foundation for the HSK 1 Chinese course.
       </Text>
 
       <View style={styles.categories}>

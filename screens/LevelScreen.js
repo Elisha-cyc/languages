@@ -3,7 +3,9 @@ import { useFetch } from "../useFetch";
 
 export default function LevelScreen({ navigation, route }) {
   const { language } = route.params;
-  const { data, error } = useFetch("/levels");
+  const { data, error } = useFetch(
+    `/levels?language=${encodeURIComponent(language)}`,
+  );
 
   if (error) return <Message text={error} />;
   if (!data) return <Message text="Loading..." />;
@@ -11,7 +13,7 @@ export default function LevelScreen({ navigation, route }) {
   const items = data.map((level) => ({
     key: level.id,
     label: level.name,
-    sub: level.cefr,
+    sub: level.curriculum || level.cefr,
   }));
 
   return (

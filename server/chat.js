@@ -2,12 +2,21 @@ const express = require("express");
 const supabase = require("./supabase");
 const { chatReply, TOPICS, PERSONAS } = require("./ai");
 const { LANGUAGES, LEVELS, PRONUNCIATION_GUIDE } = require("./curriculum");
+const { isChinese, scopeFor } = require("./hsk");
 
 const router = express.Router();
 
 const MAX_HISTORY = 20;
 const MAX_MESSAGE_CHARS = 500;
 const LIMIT_PER_HOUR = 60;
+const CHINESE_TOPICS = {
+  "HSK words and sentence patterns": "guided practice using syllabus vocabulary and grammar",
+  "Greetings and introductions": "meeting someone and introducing yourself using HSK vocabulary",
+  "Numbers, dates and daily routines": "daily routines, dates, time, and numbers at the selected HSK level",
+  "Food, shopping and travel": "everyday food, shopping, and travel situations at the selected HSK level",
+  "Tell a short story": "a short, connected story using grammar from the selected HSK level",
+  "Opinions and explanations": "sharing opinions and giving reasons using vocabulary from the selected HSK level",
+};
 
 const recent = new Map();
 
@@ -49,9 +58,11 @@ router.post("/message", async (req, res) => {
     });
   }
 
-  if (!Object.prototype.hasOwnProperty.call(TOPICS, topic)) {
+  const chinese = isChinese(language);
+  const topics = chinese ? CHINESE_TOPICS : TOPICS;
+  if (!Object.prototype.hasOwnProperty.call(topics, topic)) {
     return res.status(400).json({
-      error: `topic must be one of: ${Object.keys(TOPICS).join(", ")}`,
+      error: `topic must be one of: ${Object.keys(topics).join(", ")}`,
     });
   }
 
@@ -120,6 +131,8 @@ router.post("/message", async (req, res) => {
         content: m.content.trim(),
       })),
       pronunciationGuide: PRONUNCIATION_GUIDE[language],
+      hskScope: chinese ? scopeFor(level) : null,
+      topicDescription: topics[topic],
     });
 
     res.json({ ...result, persona: PERSONAS[language] || "Alex" });
@@ -140,7 +153,9 @@ router.post("/message", async (req, res) => {
 });
 
 router.get("/topics", (req, res) => {
-  res.json(Object.keys(TOPICS));
+  res.json(isChinese(req.query.language)
+    ? Object.keys(CHINESE_TOPICS)
+    : Object.keys(TOPICS));
 });
 
 module.exports = router;

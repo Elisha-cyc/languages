@@ -8,6 +8,7 @@ const express = require("express");
 const { PERSONAS } = require("./ai");
 const { completeJson } = require("./aijson");
 const { LANGUAGES, PRONUNCIATION_GUIDE } = require("./curriculum");
+const { isChinese, scopeFor } = require("./hsk");
 
 const router = express.Router();
 
@@ -43,6 +44,11 @@ const TOPICS = {
     "Negotiating and persuading",
     "Culture and traditions",
   ],
+};
+const CHINESE_TOPICS = {
+  Beginner: ["HSK 1 words and simple sentences", "HSK 1 greetings and introductions", "HSK 1 numbers, dates and time", "HSK 1 family, food and daily life", "HSK 1 question words and sentence order"],
+  Intermediate: ["HSK 2–3 everyday conversations", "HSK 2–3 travel, shopping and directions", "HSK 2–3 experiences and plans", "HSK 2–3 comparisons and reasons", "HSK 2–3 connected sentences and short stories"],
+  Advanced: ["HSK 4–6 extended conversation", "HSK 4–6 opinions and explanations", "HSK 4–6 news, culture and society", "HSK 4–6 formal and written Chinese", "HSK 4–6 idioms, nuance and argument"],
 };
 
 // How long the phrases should be at each level
@@ -156,7 +162,8 @@ router.post("/lesson", async (req, res) => {
   if (!Object.keys(LEVELS).includes(level)) {
     return res.status(400).json({ error: "Choose a level." });
   }
-  const levelTopics = TOPICS[level];
+  const isChineseLanguage = isChinese(language);
+  const levelTopics = isChineseLanguage ? CHINESE_TOPICS[level] : TOPICS[level];
   const chosenTopic = levelTopics.includes(topic) ? topic : levelTopics[0];
 
   if (!underLimit(userId)) {
@@ -169,7 +176,22 @@ router.post("/lesson", async (req, res) => {
   const nativeLanguage = req.user.nativeLanguage || "English";
   const teacher = PERSONAS[language] || "Alex";
   const guide = PRONUNCIATION_GUIDE[language];
-  const isChinese = /chinese/i.test(language);
+  const chineseLanguage = isChineseLanguage;
+  const hsk = isChineseLanguage ? scopeFor(level) : null;
+  const topicOffset = hsk
+    ? Array.from(chosenTopic).reduce((sum, char) => sum + char.codePointAt(0), 0) %
+      Math.max(1, hsk.vocabulary.length - 30)
+    : 0;
+  const hskTargets = hsk
+    ? hsk.vocabulary.slice(topicOffset, topicOffset + 30)
+    : [];
+  const phraseLength = hsk
+    ? {
+        Beginner: "concise phrases of about 2 to 8 Chinese characters",
+        Intermediate: "natural sentences of about 6 to 14 Chinese characters",
+        Advanced: "natural connected sentences of about 10 to 24 Chinese characters",
+      }[level]
+    : PHRASE_LENGTH[level];
 
   const system = [
     `You are ${teacher}, a warm, patient, encouraging ${language} teacher, teaching a student whose language is ${nativeLanguage}.`,
@@ -179,15 +201,17 @@ router.post("/lesson", async (req, res) => {
 
   const user = [
     `Plan a short spoken lesson of exactly ${STEPS_BY_LEVEL[level]} steps on the topic "${chosenTopic}" for a ${level} (${LEVELS[level]}) student.`,
-    `Each step teaches ONE ${language} phrase that the student will repeat aloud. Use ${PHRASE_LENGTH[level]}, useful for this topic.`,
+    `Each step teaches ONE ${language} phrase that the student will repeat aloud. Use ${phraseLength}, useful for this topic.`,
     GRAMMAR_FOCUS[level],
+    hsk ? `Align the lesson with ${hsk.label} Chinese and its 2015 HSK vocabulary and grammar. Grammar syllabus: ${hsk.grammar}. Use only structures from this band. At least one assigned word should appear in each phrase. Assigned HSK words: ${hskTargets.join(", ")}.` : "",
+    hsk ? "For Chinese, show simplified characters, tone-marked pinyin, and a natural translation. Teach a useful HSK grammar pattern in the teach line. In the tip, explicitly describe the tones of the phrase; do not claim the scoring checks tones unless it does." : "",
     "Each step must be different from the others and a little harder than the one before.",
     "Fields for every step:",
     `- "phrase": the phrase, written in ${language}.`,
     `- "meaning": its meaning in ${nativeLanguage}.`,
     guide ? `- "pronunciation": the phrase written with ${guide}.` : "",
     `- "teach": 1 or 2 short sentences, in ${nativeLanguage}, that you say to introduce the phrase like a real classroom teacher.`,
-    isChinese
+    chineseLanguage
       ? `- "tip": one sentence in ${nativeLanguage} about the tone of each syllable.`
       : `- "tip": one sentence in ${nativeLanguage} about stress or the trickiest sound.`,
     `- "praise": one short encouraging line in ${nativeLanguage}, for a good attempt.`,
@@ -210,6 +234,14 @@ router.post("/lesson", async (req, res) => {
     );
 
     const lesson = checkLesson(parseObject(reply));
+    if (
+      hskTargets.length &&
+      lesson.steps.some(
+        (step) => !hskTargets.some((word) => step.phrase.includes(word)),
+      )
+    ) {
+      throw new Error("HSK teacher lesson missed assigned vocabulary.");
+    }
     res.json({ ...lesson, teacher, language, level, topic: chosenTopic });
   } catch (err) {
     console.error("Teacher error:", String(err.message).slice(0, 300));
@@ -224,7 +256,10 @@ router.post("/lesson", async (req, res) => {
 
 router.get("/topics", (req, res) => {
   const level = String(req.query.level || "Beginner");
-  res.json(TOPICS[level] || TOPICS.Beginner);
+  const language = String(req.query.language || "");
+  res.json(isChinese(language)
+    ? CHINESE_TOPICS[level] || CHINESE_TOPICS.Beginner
+    : TOPICS[level] || TOPICS.Beginner);
 });
 
 module.exports = router;

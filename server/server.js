@@ -6,6 +6,8 @@ const { askTutor, MODES, retellBook, chatTest } = require("./ai");
 const supabase = require("./supabase");
 const { imageToText, OCR_LANGUAGES } = require("./ocr");
 const { ensureLesson } = require("./lessonmaker");
+const { isChinese } = require("./hsk");
+const { ensureHskCurriculum } = require("./ensure-hsk-curriculum");
 
 const {
   searchFreeBooks,
@@ -87,7 +89,13 @@ app.get("/levels", async (req, res, next) => {
 
     if (error) throw error;
 
-    res.json(data);
+    const chinese = isChinese(req.query.language);
+    res.json(data.map((level) => ({
+      ...level,
+      ...(chinese ? {
+        curriculum: { Beginner: "HSK 1", Intermediate: "HSK 2–3", Advanced: "HSK 4–6" }[level.name],
+      } : {}),
+    })));
   } catch (err) {
     next(err);
   }
@@ -107,6 +115,8 @@ app.get("/units", async (req, res, next) => {
 
     const userId = req.user.id;
 
+    if (isChinese(language)) await ensureHskCurriculum(supabase);
+
     const { data: matchingUnits, error: unitsError } = await supabase
       .from("units")
       .select("id, title, position, languages!inner(name), levels!inner(name)")
@@ -116,7 +126,9 @@ app.get("/units", async (req, res, next) => {
 
     if (unitsError) throw unitsError;
 
-    const units = matchingUnits || [];
+    const units = isChinese(language)
+      ? (matchingUnits || []).filter((unit) => /^HSK [1-6] · Vocabulary \d+$/.test(unit.title))
+      : matchingUnits || [];
     const unitIds = units.map((unit) => unit.id);
     let completedLessonIds = new Set();
 

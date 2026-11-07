@@ -28,6 +28,15 @@ const TOPICS = [
   "Job interview",
   "Making plans with a friend",
 ];
+const CHINESE_TOPICS = [
+  "HSK words and sentence patterns",
+  "Greetings and introductions",
+  "Numbers, dates and daily routines",
+  "Food, shopping and travel",
+  "Tell a short story",
+  "Opinions and explanations",
+];
+const topicsFor = (language) => /chinese/i.test(language) ? CHINESE_TOPICS : TOPICS;
 
 export default function ChatScreen() {
   const navigation = useNavigation();
@@ -44,6 +53,11 @@ export default function ChatScreen() {
   const [readAloud, setReadAloud] = useState(true);
   const [listening, setListening] = useState(null); // 'talk', 'dictate', or the id of the message being repeated
   const [testLoading, setTestLoading] = useState(false);
+
+  function chooseLanguage(value) {
+    setLanguage(value);
+    setTopic(topicsFor(value)[0]);
+  }
 
   const nextId = useRef(1);
   const scroller = useRef(null);
@@ -275,9 +289,12 @@ export default function ChatScreen() {
         </Text>
 
         <Text style={styles.label}>Language</Text>
-        <LanguagePicker value={language} onChange={setLanguage} />
+        <LanguagePicker value={language} onChange={chooseLanguage} />
 
         <Text style={styles.label}>Your level</Text>
+        {/chinese/i.test(language) && (
+          <Text style={styles.note}>Conversation practice follows HSK 1, HSK 2–3, or HSK 4–6 for your selected level.</Text>
+        )}
         <View style={styles.chips}>
           {LEVELS.map((value) => (
             <Pressable
@@ -296,7 +313,7 @@ export default function ChatScreen() {
 
         <Text style={styles.label}>Situation</Text>
         <View style={styles.chips}>
-          {TOPICS.map((value) => (
+          {topicsFor(language).map((value) => (
             <Pressable
               key={value}
               style={[styles.chip, topic === value && styles.chipOn]}
