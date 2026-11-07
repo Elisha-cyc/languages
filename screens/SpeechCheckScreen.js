@@ -82,18 +82,19 @@ export default function SpeechCheckScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Speech check</Text>
       <Text style={styles.note}>
-        This device reports {report.total} voices, and has a voice for{" "}
-        {withVoice} of our {report.rows.length} languages.
+        {report.cloudReady
+          ? `Online speech is configured for all ${report.rows.length} languages. People do not need to download phone voices, but they do need an internet connection.`
+          : `This device reports ${report.total} voices, and has a voice for ${withVoice} of our ${report.rows.length} languages. Online speech is not available right now.`}
       </Text>
       <Text style={styles.help}>
-        Phone voices are installed in your phone settings. After installing a
-        voice, return here and refresh the list. Where cloud speech is enabled,
-        the app can use it when a phone voice is missing.
+        If online speech is ready, LinguaApp uses it for every supported
+        language. Otherwise, this device needs its own installed voice for each
+        language. Return here and refresh after changing phone settings.
       </Text>
       <Pressable style={styles.refresh} onPress={refreshVoices}>
         <Text style={styles.refreshText}>Refresh voice list</Text>
       </Pressable>
-      {report.total === 0 && (
+      {report.total === 0 && !report.cloudReady && (
         <Text style={styles.warning}>
           {Platform.OS === "web"
             ? "No voices were reported. In Chrome the list can take a moment to load, so refresh this screen."
@@ -105,9 +106,11 @@ export default function SpeechCheckScreen() {
         <View key={row.language} style={styles.row}>
           <View style={styles.rowText}>
             <Text style={styles.language}>
-              {row.voice ? "✓" : "✗"} {row.language}
+              {row.voice || report.cloudReady ? "✓" : "✗"} {row.language}
             </Text>
-            <Text style={styles.sub}>{row.voice || "No voice found"}</Text>
+            <Text style={styles.sub}>
+              {row.voice || (report.cloudReady ? "Online voice" : "No voice found")}
+            </Text>
             {results[row.language] && (
               <Text style={styles.result}>{results[row.language]}</Text>
             )}
@@ -118,25 +121,29 @@ export default function SpeechCheckScreen() {
         </View>
       ))}
 
-      <Text style={styles.heading}>Install a missing phone voice</Text>
-      {Platform.OS === "android" ? (
-        <Text style={styles.help}>
-          Android: open Settings → Accessibility → Text-to-speech output (on
-          some phones: System or General management → Text-to-speech output).
-          Choose Speech Services by Google, tap its settings button, then
-          Install voice data and download the language. Come back and refresh.
-        </Text>
-      ) : Platform.OS === "ios" ? (
-        <Text style={styles.help}>
-          iPhone: open Settings → Accessibility → Spoken Content → Voices. Pick
-          the language and download a voice. Come back and refresh. Turn off
-          Silent Mode if you cannot hear speech.
-        </Text>
-      ) : (
-        <Text style={styles.help}>
-          Windows: Settings → Time and language → Speech → Manage voices. Add a
-          voice, then reload the page. Chrome may also provide online voices.
-        </Text>
+      {!report.cloudReady && (
+        <>
+          <Text style={styles.heading}>Install a missing phone voice</Text>
+          {Platform.OS === "android" ? (
+            <Text style={styles.help}>
+              Android: open Settings → Accessibility → Text-to-speech output (on
+              some phones: System or General management → Text-to-speech output).
+              Choose Speech Services by Google, tap its settings button, then
+              Install voice data and download the language. Come back and refresh.
+            </Text>
+          ) : Platform.OS === "ios" ? (
+            <Text style={styles.help}>
+              iPhone: open Settings → Accessibility → Spoken Content → Voices.
+              Pick the language and download a voice. Come back and refresh. Turn
+              off Silent Mode if you cannot hear speech.
+            </Text>
+          ) : (
+            <Text style={styles.help}>
+              Windows: Settings → Time and language → Speech → Manage voices. Add
+              a voice, then reload the page. Chrome may also provide online voices.
+            </Text>
+          )}
+        </>
       )}
     </ScrollView>
   );

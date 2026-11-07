@@ -37,16 +37,19 @@ export default function TutorScreen({ navigation, route }) {
   // Stop any speech when the user leaves this screen
   useEffect(() => stopSpeaking, []);
 
-  // Load the chosen part and clear the old answer.
-  // A book opened from the library also starts reading straight away.
+  // Load the chosen part and start reading book text opened from the library.
   useEffect(() => {
     if (parts.length > 0) {
-      setText(parts[partIndex]);
+      const part = parts[partIndex];
+      setText(part);
       setReply("");
       setError(null);
-      if (params.autoRead) ask("read_explain", parts[partIndex]);
+      if (params.autoRead) speak(part, language);
     }
-  }, [partIndex, parts]);
+    return () => {
+      if (params.autoRead) stopSpeaking();
+    };
+  }, [partIndex, parts, language]);
 
   // `source` is the text to send; it defaults to what is in the text box
   async function ask(mode, source = text) {

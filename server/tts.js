@@ -172,6 +172,13 @@ async function synthesize(req, res, returnAudioKey = false) {
   }
 }
 
+router.get("/status", (req, res) => {
+  res.json({
+    configured: Boolean(process.env.AZURE_SPEECH_KEY && process.env.AZURE_SPEECH_REGION),
+    languages: Object.keys(VOICES).filter((language) => language !== "English").length,
+  });
+});
+
 router.post("/", (req, res) => synthesize(req, res));
 router.post("/url", (req, res) => synthesize(req, res, true));
 

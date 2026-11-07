@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import { StyleSheet, Text, View, Pressable, ScrollView } from "react-native";
-import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
+import {
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+  Pressable,
+  ScrollView,
+} from "react-native";
 import { Message } from "../components/ChoiceList";
 import { useFetch } from "../useFetch";
 import { USER_ID } from "../config";
@@ -18,7 +24,6 @@ const REST_MAX_MS = 6 * 60 * 1000;
 const DELAYS = [0, 15, 30, 45, 60, 75, 90]; // minutes before the first cue
 const DURATIONS = [5, 30, 60, 90, 120]; // minutes of cueing
 const STILL_OPTIONS = [0, 2, 5, 10]; // minutes without movement before cues resume (0 = off)
-const KEEP_AWAKE_TAG = "sleep-session";
 
 function shuffle(list) {
   const copy = [...list];
@@ -81,15 +86,6 @@ export default function SleepNightScreen({ navigation, route }) {
   const lastMotionAt = motion.lastMotionAt;
   const motionAvailable = useRef(false);
   motionAvailable.current = motion.available === true;
-
-  // Keep the screen on while the session runs
-  useEffect(() => {
-    if (!running) return;
-    Promise.resolve(activateKeepAwakeAsync(KEEP_AWAKE_TAG)).catch(() => {});
-    return () => {
-      Promise.resolve(deactivateKeepAwake(KEEP_AWAKE_TAG)).catch(() => {});
-    };
-  }, [running]);
 
   // A clock for the countdown
   useEffect(() => {
@@ -353,10 +349,9 @@ export default function SleepNightScreen({ navigation, route }) {
       </Text>
 
       <Text style={styles.small}>
-        Keep the app open with the screen on and the phone plugged in, because
-        phones pause apps in the background. To try it now, choose 0 minutes of
-        waiting, 5 minutes of cues, and 0 for the movement pause. You will hear
-        one block of cues.
+        {Platform.OS === "web"
+          ? "The web player can continue audio with the screen off in browsers that support background media. Browser support varies."
+          : "On phones, locking the screen pauses sleep cues. Keep the app open while listening, and plug in your phone for a long session."} To try it now, choose 0 minutes of waiting, 5 minutes of cues, and 0 for the movement pause.
       </Text>
 
       <Pressable style={styles.button} onPress={start}>

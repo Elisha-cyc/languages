@@ -1,6 +1,6 @@
 import * as Speech from "expo-speech";
 import { createAudioPlayer } from "expo-audio";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import { API_URL } from "./config";
 import { getAuthToken } from "./auth";
 
@@ -127,6 +127,16 @@ export async function findVoice(code) {
 // For the speech check screen: which of our languages have a voice on this device
 export async function voiceReport({ refresh = false } = {}) {
   const voices = await loadVoices(refresh);
+  let cloudReady = false;
+  try {
+    const response = await fetch(`${API_URL}/tts/status`);
+    if (response.ok) {
+      cloudReady = (await response.json()).configured === true;
+      if (cloudReady) cloudOffUntil = 0;
+    }
+  } catch (e) {
+    // Device voice reporting remains useful while the server is offline.
+  }
   const rows = [];
   for (const language of SPEECH_LANGUAGES) {
     const voice = await findVoice(LANGUAGE_CODES[language]);
@@ -136,7 +146,7 @@ export async function voiceReport({ refresh = false } = {}) {
       voice: voice ? voice.name || voice.identifier : null,
     });
   }
-  return { total: voices.length, rows };
+  return { total: voices.length, rows, cloudReady };
 }
 
 // ---------- Cleaning text before it is spoken ----------
@@ -229,6 +239,14 @@ let nativePlayer = null;
 let nativeSubscription = null;
 let stopNativePlayback = null;
 let cloudOffUntil = 0; // when the server says "not set up", stop asking
+let appIsActive = true;
+
+if (Platform.OS !== "web") {
+  AppState.addEventListener("change", (state) => {
+    appIsActive = state === "active";
+    if (!appIsActive) stopSpeaking();
+  });
+}
 
 // A silent half-empty sound, played once on the first tap to unlock audio
 const SILENT_WAV =
@@ -259,6 +277,7 @@ function stopCloud() {
   if (player) {
     try {
       player.pause();
+      player.currentTime = 0;
     } catch (e) {
       // nothing playing
     }
@@ -273,6 +292,43 @@ function stopCloud() {
     stopNativePlayback = null;
     end();
   }
+  setWebMediaState("paused");
+}
+
+let mediaHandlersInstalled = false;
+
+function setWebMediaState(state) {
+  if (Platform.OS !== "web" || typeof navigator === "undefined") return;
+  const session = navigator.mediaSession;
+  if (!session) return;
+
+  try {
+    if (!mediaHandlersInstalled) {
+      if (typeof MediaMetadata !== "undefined") {
+        session.metadata = new MediaMetadata({
+          title: "LinguaApp reading",
+          artist: "LinguaApp",
+        });
+      }
+      const setHandler = (action, handler) => {
+        try {
+          session.setActionHandler(action, handler);
+        } catch (e) {
+          // Some browsers implement only a subset of media actions.
+        }
+      };
+      setHandler("play", () => {
+        const audio = getPlayer();
+        if (audio) audio.play().catch(() => {});
+      });
+      setHandler("pause", () => getPlayer()?.pause());
+      setHandler("stop", () => stopSpeaking());
+      mediaHandlersInstalled = true;
+    }
+    session.playbackState = state;
+  } catch (e) {
+    // Lock-screen controls are optional and not supported by every browser.
+  }
 }
 
 // Returns a sound address for one piece of text, or null if unavailable
@@ -283,7 +339,7 @@ async function fetchCloudAudio(text, language, rate) {
     body: JSON.stringify({ text, language, rate }),
   });
   if (res.status === 501) {
-    cloudOffUntil = Infinity; // not set up on the server: do not ask again
+    cloudOffUntil = Date.now() + 5 * 60 * 1000;
     return null;
   }
   if (!res.ok) {
@@ -300,7 +356,7 @@ async function prepareNativeCloudAudio(text, language, rate) {
     body: JSON.stringify({ text, language, rate }),
   });
   if (res.status === 501) {
-    cloudOffUntil = Infinity;
+    cloudOffUntil = Date.now() + 5 * 60 * 1000;
     return null;
   }
   if (!res.ok) {
@@ -369,10 +425,20 @@ function playNativeUrl(url, myRun) {
 
 function playUrl(url) {
   const audio = getPlayer();
+  audio.preload = "auto";
+  audio.playsInline = true;
   let finish;
   const ended = new Promise((resolve) => (finish = resolve));
-  audio.onended = () => finish(true);
-  audio.onerror = () => finish(false);
+  audio.onplay = () => setWebMediaState("playing");
+  audio.onpause = () => setWebMediaState("paused");
+  audio.onended = () => {
+    setWebMediaState("paused");
+    finish(true);
+  };
+  audio.onerror = () => {
+    setWebMediaState("none");
+    finish(false);
+  };
   stopPlayback = () => finish(false);
   audio.src = url;
   let started;
@@ -480,6 +546,9 @@ export async function speak(text, language, options = {}) {
   const code = LANGUAGE_CODES[language] || EXTRA_CODES[language];
   if (!text || !code)
     return { ok: false, reason: "No language was chosen for speech." };
+  if (Platform.OS !== "web" && !appIsActive) {
+    return { ok: false, reason: "Reading pauses when the app is in the background." };
+  }
 
   const { onFinish, ...speechOptions } = options;
   const myRun = ++run;
@@ -490,10 +559,9 @@ export async function speak(text, language, options = {}) {
   const voice = await findVoice(code);
   if (myRun !== run) return { ok: true };
 
-  // Use a cloud voice on phones only when the requested device voice is missing.
+  // Prefer the hosted voice so all supported languages work without phone installs.
   if (
     cleaned &&
-    (Platform.OS === "web" || !voice) &&
     (await speakCloud(
       cleaned,
       language,

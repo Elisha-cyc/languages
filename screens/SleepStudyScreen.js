@@ -36,25 +36,39 @@ export default function SleepStudyScreen({ navigation, route }) {
     [],
   );
 
-  // Start reading as soon as the words are loaded
- useEffect(() => {
-   if (!data || !Array.isArray(data.words) || !handsFree) return;
-   if (started.current) return;
+  function startAuto() {
+    if (!data || !Array.isArray(data.words) || started.current) return;
 
-   const availableWords = data.words.filter(
-     (word) => !removed.includes(word.id),
-   );
+    const availableWords = data.words.filter(
+      (word) => !removed.includes(word.id),
+    );
+    if (availableWords.length === 0) return;
 
-   if (availableWords.length === 0) return;
+    started.current = true;
+    wordsRef.current = availableWords;
+    playAll();
+  }
 
-   started.current = true;
-   wordsRef.current = availableWords;
+  // Start reading as soon as the words are loaded.
+  useEffect(() => {
+    if (handsFree) startAuto();
+  }, [data, handsFree, removed]);
 
-   playAll();
- }, [data, handsFree, removed]);
+  useEffect(() => {
+    if (phase !== "counting") return;
+    if (seconds <= 0) {
+      setPhase("idle");
+      navigation.navigate("SleepNight", { sessionId, language });
+      return;
+    }
+
+    const timer = setTimeout(() => setSeconds((value) => value - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [phase, seconds, navigation, sessionId, language]);
 
   function stopAuto() {
     runId.current++;
+    started.current = false;
     stopSpeaking();
     setPhase("idle");
     setCurrent(null);
@@ -91,6 +105,7 @@ export default function SleepStudyScreen({ navigation, route }) {
 
    if (id !== runId.current) return;
 
+   started.current = false;
    setPhase("counting");
    setSeconds(COUNTDOWN_SECONDS);
 
@@ -159,7 +174,7 @@ export default function SleepStudyScreen({ navigation, route }) {
       {phase === "counting" && (
         <View style={styles.banner}>
           <Text style={styles.bannerText}>
-            Starting tonight's replay in {seconds} seconds. Sleep well.
+            Opening tonight's cue settings in {seconds} seconds. Sleep well.
           </Text>
           <Pressable style={styles.bannerButton} onPress={stopAuto}>
             <Text style={styles.bannerButtonText}>Cancel</Text>
@@ -172,6 +187,17 @@ export default function SleepStudyScreen({ navigation, route }) {
           Hands-free: {handsFree ? "on" : "off"}
         </Text>
       </Pressable>
+      {phase === "idle" && words.length > 0 && (
+        <Pressable
+          style={styles.button}
+          onPress={() => {
+            setHandsFree(true);
+            startAuto();
+          }}
+        >
+          <Text style={styles.buttonText}>Start reading now</Text>
+        </Pressable>
+      )}
 
       <Text style={styles.note}>
         All {words.length} words get the same review. Tonight only some of them

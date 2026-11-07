@@ -229,6 +229,7 @@ export default function App() {
     try {
       setAudioModeAsync({
         playsInSilentMode: true,
+        shouldPlayInBackground: false,
         interruptionMode: "doNotMix",
         shouldRouteThroughEarpiece: false,
       }).catch(() => {});
