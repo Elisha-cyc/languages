@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   Platform,
+  TextInput,
 } from "react-native";
 import { Message } from "../components/ChoiceList";
 import { useFetch } from "../useFetch";
@@ -28,6 +29,8 @@ export default function FlashcardScreen({ navigation, route }) {
   const [tries, setTries] = useState(0);
   const [skipped, setSkipped] = useState(false);
   const [problem, setProblem] = useState(null);
+  const [writingAnswer, setWritingAnswer] = useState("");
+  const [showWritingModel, setShowWritingModel] = useState(false);
 
   // Stop any speech or recording when the user leaves this screen
   useQuietOnLeave(() => {
@@ -40,13 +43,15 @@ export default function FlashcardScreen({ navigation, route }) {
     return (
       <Message text="Preparing your lesson... this can take up to 30 seconds the first time." />
     );
-  if (!Array.isArray(words))
+  const cards = Array.isArray(words) ? words : words?.cards;
+  const guide = Array.isArray(words) ? null : words?.guide;
+  if (!Array.isArray(cards))
     return <Message text={words.error || "Could not load this lesson."} />;
-  if (words.length === 0)
+  if (cards.length === 0)
     return <Message text="This lesson has no content yet." />;
 
-  const isLast = index === words.length - 1;
-  const card = words[index];
+  const isLast = index === cards.length - 1;
+  const card = cards[index];
   const isSentence = card.word.length > 28;
 
   const passed = result && result.score >= PASS;
@@ -56,7 +61,7 @@ export default function FlashcardScreen({ navigation, route }) {
     stopSpeaking();
     voice.cancel();
     if (isLast) {
-      navigation.replace("Quiz", { lessonId });
+      navigation.replace("Quiz", { lessonId, language });
       return;
     }
     setShowMeaning(false);
@@ -64,6 +69,8 @@ export default function FlashcardScreen({ navigation, route }) {
     setTries(0);
     setSkipped(false);
     setProblem(null);
+    setWritingAnswer("");
+    setShowWritingModel(false);
     setIndex(index + 1);
   }
 
@@ -104,8 +111,32 @@ export default function FlashcardScreen({ navigation, route }) {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.counter}>
-        Card {index + 1} of {words.length}
+        Card {index + 1} of {cards.length}
       </Text>
+
+      {guide && (
+        <View style={styles.guide}>
+          <Text style={styles.guideEyebrow}>{guide.grade} · FULL COURSE PRACTICE</Text>
+          <Text style={styles.guideTitle}>{guide.topic}</Text>
+          <Text style={styles.guideText}>Grammar focus: {guide.grammar}</Text>
+          <Text style={styles.guideText}>Speak: repeat each example aloud and notice the tones.</Text>
+          <Text style={styles.guideText}>Listen: use the audio, then answer the listening review.</Text>
+          <Text style={styles.guideText}>Write: {guide.writing}</Text>
+          <Text style={styles.guideText}>Skills at this level:</Text>
+          {guide.outcomes.map((outcome) => (
+            <Text key={outcome} style={styles.guideText}>• {outcome}</Text>
+          ))}
+          {!!guide.exam && <Text style={styles.guideExam}>Exam pathway: {guide.exam}</Text>}
+          <View style={styles.courseLinks}>
+            <Pressable style={styles.courseLink} onPress={() => navigation.navigate("PinyinTeacher")}>
+              <Text style={styles.courseLinkText}>Practice initials, finals & tones</Text>
+            </Pressable>
+            <Pressable style={styles.courseLink} onPress={() => navigation.navigate("HanziHome")}>
+              <Text style={styles.courseLinkText}>Study characters & strokes</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
 
       <Pressable
         style={styles.card}
@@ -184,6 +215,26 @@ export default function FlashcardScreen({ navigation, route }) {
         </Text>
       )}
 
+      {guide && (
+        <View style={styles.writing}>
+          <Text style={styles.panelTitle}>Write from meaning</Text>
+          <Text style={styles.note}>{card.meaning}</Text>
+          <TextInput
+            accessibilityLabel="Write the Chinese sentence from its meaning"
+            style={styles.writingInput}
+            value={writingAnswer}
+            onChangeText={setWritingAnswer}
+            placeholder="Type the Chinese sentence here"
+            multiline
+            textAlignVertical="top"
+          />
+          <Pressable style={styles.reveal} onPress={() => setShowWritingModel((visible) => !visible)}>
+            <Text style={styles.revealText}>{showWritingModel ? "Hide model" : "Compare with model"}</Text>
+          </Pressable>
+          {showWritingModel && <Text style={styles.model}>{card.word}</Text>}
+        </View>
+      )}
+
       <Pressable
         style={[styles.button, !canMove && styles.disabled]}
         disabled={!canMove}
@@ -206,6 +257,14 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   counter: { fontSize: 16, color: "#666", marginBottom: 16 },
+  guide: { width: "100%", maxWidth: 420, backgroundColor: "#eaf1ff", borderRadius: 16, padding: 16, marginBottom: 16 },
+  guideEyebrow: { color: "#2a6fdb", fontSize: 12, fontWeight: "800", letterSpacing: 0.7 },
+  guideTitle: { color: "#172b4d", fontSize: 19, fontWeight: "800", marginTop: 5, marginBottom: 8 },
+  guideText: { color: "#39465a", fontSize: 14, lineHeight: 20, marginTop: 5 },
+  guideExam: { color: "#465d7d", fontSize: 12, lineHeight: 17, marginTop: 9 },
+  courseLinks: { marginTop: 9, gap: 8 },
+  courseLink: { backgroundColor: "white", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, alignItems: "center" },
+  courseLinkText: { color: "#2a6fdb", fontSize: 14, fontWeight: "700", textAlign: "center" },
   card: {
     width: "100%",
     maxWidth: 360,
@@ -278,6 +337,11 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     textAlign: "center",
   },
+  writing: { width: "100%", maxWidth: 360, marginTop: 16, backgroundColor: "white", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "#d5d9e0" },
+  writingInput: { minHeight: 80, borderWidth: 1, borderColor: "#d5d9e0", borderRadius: 10, padding: 11, marginTop: 9, fontSize: 17, backgroundColor: "#fbfcff" },
+  reveal: { alignSelf: "center", padding: 10 },
+  revealText: { color: "#2a6fdb", fontSize: 15, fontWeight: "700" },
+  model: { textAlign: "center", fontSize: 21, fontWeight: "700", color: "#172b4d", padding: 8 },
   skip: { marginTop: 10, padding: 8, alignItems: "center" },
   skipText: { color: "#666", fontSize: 14 },
   button: {

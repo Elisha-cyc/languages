@@ -6,7 +6,7 @@ const { askTutor, MODES, retellBook, chatTest } = require("./ai");
 const supabase = require("./supabase");
 const { imageToText, OCR_LANGUAGES } = require("./ocr");
 const { ensureLesson } = require("./lessonmaker");
-const { isChinese } = require("./hsk");
+const { isChinese, courseForLevel, lessonPlan } = require("./hsk");
 const { ensureHskCurriculum } = require("./ensure-hsk-curriculum");
 
 const {
@@ -99,6 +99,16 @@ app.get("/levels", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// Full HSK course map for the selected app level.
+app.get("/hsk/course", (req, res) => {
+  if (!isChinese(req.query.language)) {
+    return res.json(null);
+  }
+  const course = courseForLevel(req.query.level);
+  if (!course) return res.status(400).json({ error: "Unknown course level." });
+  res.json(course);
 });
 
 // Get units for a language and level
@@ -271,14 +281,33 @@ app.get("/lessons/:id/words", async (req, res) => {
       throw new Error(`Could not load lesson words: ${wordsError.message}`);
     }
 
-    res.json(
-      await localize(
-        "word_meaning",
-        words,
-        "meaning",
-        req.user?.nativeLanguage,
-      ),
+    const localizedWords = await localize(
+      "word_meaning", words, "meaning", req.user?.nativeLanguage,
     );
+    const { data: courseLesson, error: courseError } = await supabase
+      .from("lessons")
+      .select("position, units!inner(title, levels!inner(name), languages!inner(name))")
+      .eq("id", lessonId)
+      .maybeSingle();
+    if (courseError) throw new Error(`Could not load lesson course: ${courseError.message}`);
+
+    const unit = courseLesson?.units;
+    if (isChinese(unit?.languages?.name)) {
+      const plan = lessonPlan(unit.title, Number(courseLesson.position), unit.levels.name);
+      return res.json({
+        cards: localizedWords,
+        guide: {
+          standard: courseForLevel(unit.levels.name)?.standard,
+          grade: `HSK ${plan?.grade}`,
+          topic: plan?.topic,
+          grammar: plan?.grammar,
+          outcomes: plan?.outcomes || [],
+          writing: plan?.writing,
+          exam: plan?.exam,
+        },
+      });
+    }
+    res.json(localizedWords);
   } catch (err) {
     console.error("Lesson error:", err.message);
 

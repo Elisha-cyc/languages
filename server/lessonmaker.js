@@ -6,7 +6,7 @@ const {
   LESSONS_PER_UNIT,
   PRONUNCIATION_GUIDE,
 } = require("./curriculum");
-const { wordsForLesson } = require("./hsk");
+const { wordsForLesson, lessonPlan } = require("./hsk");
 
 const pending = new Map();
 
@@ -151,6 +151,9 @@ async function makeLesson(lessonId) {
       : null,
     hskGrade: /chinese/i.test(language)
       ? Number(unit.title.match(/^HSK ([1-6])/)?.[1])
+      : null,
+    hskGrammarFocus: /chinese/i.test(language)
+      ? lessonPlan(unit.title, lesson.position, level)?.grammar
       : null,
   };
 

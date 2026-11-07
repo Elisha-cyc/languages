@@ -1,191 +1,142 @@
 import { useState } from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-  Pressable,
-  TextInput,
-  Image,
-  ActivityIndicator,
-} from "react-native";
-import * as ImagePicker from "expo-image-picker";
+import { ScrollView, StyleSheet, Text, Pressable, View } from "react-native";
+import { Message } from "../components/ChoiceList";
+import { useFetch } from "../useFetch";
 import { API_URL } from "../config";
-import { appendAsset } from "../upload";
+import { speak } from "../speech";
 
-export default function PhotoScreen({ navigation, route }) {
-  const forTitle = route.params?.forTitle === true;
+export default function QuizScreen({ navigation, route }) {
+  const { lessonId } = route.params || {};
+  const { data: questions, error } = useFetch(`/lessons/${lessonId}/quiz`);
+  const [answers, setAnswers] = useState({});
+  const [result, setResult] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [problem, setProblem] = useState(null);
+  const [visiblePrompts, setVisiblePrompts] = useState({});
+  const { language } = route.params || {};
+  const audioFirst = /chinese/i.test(String(language || ""));
 
-  const [language, setLanguage] = useState("French");
-  const [preview, setPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  if (error) return <Message text={error} />;
+  if (!questions) return <Message text="Loading your review…" />;
+  if (!Array.isArray(questions)) return <Message text={questions.error || "Could not load this review."} />;
+  if (!questions.length) return <Message text="This lesson needs more vocabulary before it can make a quiz." />;
 
-  async function readPhoto(asset) {
-    setPreview(asset.uri);
-    setLoading(true);
-    setError(null);
+  const allAnswered = questions.every((question) => answers[question.wordId] !== undefined);
 
+  async function submit() {
+    if (!allAnswered || submitting) return;
+    setSubmitting(true);
+    setProblem(null);
     try {
-      const form = new FormData();
-      form.append("language", language); // text fields first, then the file
-      await appendAsset(form, "file", asset, "photo.jpg", "image/jpeg");
-
-      const res = await fetch(`${API_URL}/ocr`, { method: "POST", body: form });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not read that photo");
-
-      if (forTitle) {
-        // A cover: use its first two lines as a title to search for
-        const title = data.text
-          .split("\n")
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .slice(0, 2)
-          .join(" ")
-          .slice(0, 100);
-        navigation.navigate("Books", { title, language });
-        return;
-      }
-
-      navigation.navigate("Tutor", {
-        fullText: data.text,
-        language,
-        fileName: data.fileName,
-        truncated: data.truncated,
+      const response = await fetch(`${API_URL}/lessons/${lessonId}/quiz`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          answers: questions.map((question) => ({
+            wordId: question.wordId,
+            answer: answers[question.wordId],
+          })),
+        }),
       });
-    } catch (e) {
-      setError(e.message);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not check your answers.");
+      setResult(data);
+    } catch (err) {
+      setProblem(err.message || "Could not reach the course server.");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
-  }
-
-  async function takePhoto() {
-    setError(null);
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      setError("Camera permission is needed to take a photo.");
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
-    if (!result.canceled) await readPhoto(result.assets[0]);
-  }
-
-  async function choosePhoto() {
-    setError(null);
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.7,
-    });
-    if (!result.canceled) await readPhoto(result.assets[0]);
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>
-        {forTitle ? "Scan a book cover" : "Read a page from a photo"}
-      </Text>
-      <Text style={styles.note}>
-        {forTitle
-          ? "Photograph the front cover. We will search for the title."
-          : "Works best with a flat, well-lit, printed page."}
+    <ScrollView contentContainerStyle={styles.page}>
+      <Text style={styles.title}>{result ? "Lesson review" : "Check what you learned"}</Text>
+      <Text style={styles.subtitle}>
+        {result
+          ? `${result.score} of ${result.total} correct · ${result.passed ? "Lesson complete" : "Review the answers and try again"}`
+          : `Choose the meaning for each Chinese word or sentence. Answer all ${questions.length} questions.`}
       </Text>
 
-      <Text style={styles.label}>Language of the text</Text>
-      <TextInput
-        style={styles.input}
-        value={language}
-        onChangeText={setLanguage}
-      />
+      {questions.map((question, index) => {
+        const checked = result?.results?.find((item) => item.wordId === question.wordId);
+        return (
+          <View key={question.wordId} style={styles.questionCard}>
+            <Text style={styles.number}>Question {index + 1}</Text>
+            {audioFirst && !visiblePrompts[question.wordId] && !result ? (
+              <View style={styles.audioFirst}>
+                <Text style={styles.audioHint}>Listen and choose the meaning</Text>
+                <Pressable style={styles.listen} onPress={() => speak(question.prompt, language)}>
+                  <Text style={styles.listenText}>🔊 Play Chinese audio</Text>
+                </Pressable>
+                <Pressable onPress={() => setVisiblePrompts((current) => ({ ...current, [question.wordId]: true }))}>
+                  <Text style={styles.revealText}>Show the Chinese text</Text>
+                </Pressable>
+              </View>
+            ) : <Text style={styles.prompt}>{question.prompt}</Text>}
+            {question.pronunciation && (!audioFirst || visiblePrompts[question.wordId] || result) ? <Text style={styles.pinyin}>{question.pronunciation}</Text> : null}
+            {question.options.map((option) => {
+              const selected = answers[question.wordId] === option;
+              const correct = checked && option === checked.correctAnswer;
+              const wrong = checked && selected && !checked.correct;
+              return (
+                <Pressable
+                  key={option}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected, disabled: Boolean(result) }}
+                  disabled={Boolean(result)}
+                  onPress={() => setAnswers((current) => ({ ...current, [question.wordId]: option }))}
+                  style={[styles.option, selected && styles.selected, correct && styles.correct, wrong && styles.incorrect]}
+                >
+                  <Text style={[styles.optionText, (selected || correct) && styles.selectedText]}>{option}</Text>
+                </Pressable>
+              );
+            })}
+            {checked && !checked.correct ? <Text style={styles.answer}>Answer: {checked.correctAnswer}</Text> : null}
+          </View>
+        );
+      })}
 
-      <Pressable
-        style={[styles.button, loading && styles.disabled]}
-        disabled={loading}
-        onPress={takePhoto}
-      >
-        <Text style={styles.buttonText}>Take a photo</Text>
-      </Pressable>
-      <Pressable
-        style={[styles.secondary, loading && styles.disabled]}
-        disabled={loading}
-        onPress={choosePhoto}
-      >
-        <Text style={styles.secondaryText}>Choose from gallery</Text>
-      </Pressable>
-
-      {preview && (
-        <Image
-          source={{ uri: preview }}
-          style={styles.preview}
-          resizeMode="contain"
-        />
+      {problem ? <Text style={styles.problem}>{problem}</Text> : null}
+      {result ? (
+        <Pressable style={styles.submit} onPress={() => navigation.goBack()}>
+          <Text style={styles.submitText}>{result.passed ? "Continue learning" : "Back to lesson"}</Text>
+        </Pressable>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          disabled={!allAnswered || submitting}
+          style={[styles.submit, (!allAnswered || submitting) && styles.disabled]}
+          onPress={submit}
+        >
+          <Text style={styles.submitText}>{submitting ? "Checking…" : "Check answers"}</Text>
+        </Pressable>
       )}
-
-      {loading && (
-        <View style={styles.loading}>
-          <ActivityIndicator />
-          <Text style={styles.note}>
-            Reading the text... the first scan in a language can take a minute.
-          </Text>
-        </View>
-      )}
-
-      {error && <Text style={styles.error}>{error}</Text>}
-
-      <Text
-        style={[
-          styles.prompt,
-          question.prompt.length > 28 && { fontSize: 24, lineHeight: 32 },
-        ]}
-      >
-        {question.prompt}
-      </Text>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 24,
-    backgroundColor: "#f2f4f8",
-    justifyContent: "center",
-  },
-  title: { fontSize: 24, fontWeight: "bold", textAlign: "center" },
-  note: {
-    fontSize: 15,
-    color: "#666",
-    textAlign: "center",
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  label: { fontSize: 14, color: "#555", marginBottom: 4 },
-  input: {
-    backgroundColor: "white",
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: "#d5d9e0",
-    marginBottom: 20,
-  },
-  button: {
-    backgroundColor: "#2a6fdb",
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  buttonText: { color: "white", fontSize: 18 },
-  secondary: {
-    backgroundColor: "#dbe7ff",
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: "center",
-    marginTop: 10,
-  },
-  secondaryText: { color: "#2a6fdb", fontSize: 18 },
-  disabled: { opacity: 0.5 },
-  preview: { height: 160, marginTop: 16 },
-  loading: { alignItems: "center", marginTop: 8 },
-  error: { marginTop: 16, color: "#c0392b", textAlign: "center" },
+  page: { flexGrow: 1, padding: 18, backgroundColor: "#f2f4f8", alignItems: "center" },
+  title: { fontSize: 26, fontWeight: "800", color: "#172b4d", textAlign: "center", marginTop: 8 },
+  subtitle: { maxWidth: 520, color: "#58677d", fontSize: 15, lineHeight: 22, textAlign: "center", marginVertical: 12 },
+  questionCard: { width: "100%", maxWidth: 520, backgroundColor: "white", padding: 16, borderRadius: 16, marginVertical: 7, elevation: 2 },
+  number: { color: "#65758b", fontSize: 13, fontWeight: "700", marginBottom: 7 },
+  prompt: { color: "#172b4d", fontSize: 24, fontWeight: "700", textAlign: "center" },
+  pinyin: { color: "#66758a", fontSize: 15, textAlign: "center", marginBottom: 6 },
+  audioFirst: { alignItems: "center", paddingVertical: 8 },
+  audioHint: { color: "#58677d", fontSize: 15, marginBottom: 8 },
+  listen: { backgroundColor: "#e9f0ff", borderRadius: 22, paddingVertical: 11, paddingHorizontal: 18, marginBottom: 5 },
+  listenText: { color: "#2a6fdb", fontSize: 16, fontWeight: "700" },
+  revealText: { color: "#2a6fdb", fontSize: 14, padding: 9 },
+  option: { minHeight: 46, justifyContent: "center", paddingHorizontal: 14, paddingVertical: 10, marginTop: 8, borderWidth: 1, borderColor: "#d9e0ea", borderRadius: 11 },
+  selected: { backgroundColor: "#e9f0ff", borderColor: "#3675dd" },
+  correct: { backgroundColor: "#e7f7ec", borderColor: "#299450" },
+  incorrect: { backgroundColor: "#fff0ed", borderColor: "#ce5747" },
+  optionText: { color: "#26364d", fontSize: 16, lineHeight: 22 },
+  selectedText: { fontWeight: "700" },
+  answer: { color: "#9b4539", marginTop: 10, fontSize: 14 },
+  problem: { color: "#b34235", margin: 10, textAlign: "center" },
+  submit: { backgroundColor: "#2a6fdb", minWidth: 220, alignItems: "center", padding: 15, borderRadius: 13, marginVertical: 18 },
+  submitText: { color: "white", fontSize: 17, fontWeight: "700" },
+  disabled: { opacity: 0.45 },
 });

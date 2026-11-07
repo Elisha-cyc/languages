@@ -399,12 +399,14 @@ async function generateLesson({
   pronunciationGuide,
   targetWords,
   hskGrade,
+  hskGrammarFocus,
 }) {
   const system = [
     `You design lessons for a ${language} course for ${nativeLanguage} speakers.`,
     "Reply with JSON only: no explanation, no markdown fences.",
     hskGrade ? `This is an HSK ${hskGrade} vocabulary lesson. Use only the assigned HSK words below; avoid vocabulary and grammar from higher grades.` : "",
     hskGrade ? `Required grammar scope: ${GRAMMAR[hskGrade]}. Teach these structures at the level appropriate to the target words.` : "",
+    hskGrammarFocus ? `Today's explicit grammar target is "${hskGrammarFocus}". Ensure multiple example sentences naturally demonstrate this structure; do not just mention it in the title.` : "",
   ].join("\n");
 
   const length = SENTENCE_LENGTH[level] || "5 to 12 words";
@@ -416,6 +418,7 @@ async function generateLesson({
       : "This is the first lesson in the unit, so start with the most basic situations of the theme.",
     `Write ${SENTENCES_PER_LESSON} natural sentences that a real ${language} speaker would say about this theme. Each sentence is ${length} long, grammatically correct, and different from the others.`,
     `Every sentence must fit the unit theme "${unit}". Do not drift into other themes.`,
+    hskGrammarFocus ? `Make the assigned grammar target "${hskGrammarFocus}" visible in multiple natural Chinese examples so the learner can notice how it works.` : "",
     targetWords?.length ? `Assigned words to cover exactly in the sentences: ${targetWords.join(", ")}. Cover every assigned word and do not substitute different targets.` : "",
     'The title must not contain the word "Lesson" or any number.',
     pronunciationGuide

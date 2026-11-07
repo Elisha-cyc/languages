@@ -13,10 +13,12 @@ export function Message({ text }) {
   );
 }
 
-export default function ChoiceList({ title, items, onPick, emptyText }) {
+export default function ChoiceList({ title, items, onPick, emptyText, intro }) {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>{title}</Text>
+
+      {intro && <Text style={styles.intro}>{intro}</Text>}
 
       {items.length === 0 && <Text style={styles.empty}>{emptyText}</Text>}
 
@@ -55,6 +57,17 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginBottom: 24,
     textAlign: "center",
+  },
+  intro: {
+    maxWidth: 520,
+    marginTop: -12,
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 14,
+    backgroundColor: "white",
+    color: "#39465a",
+    fontSize: 15,
+    lineHeight: 22,
   },
   empty: { fontSize: 16, color: "#666", textAlign: "center" },
   button: {
