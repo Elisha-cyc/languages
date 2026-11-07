@@ -105,6 +105,10 @@ router.get("/home", async (req, res) => {
         id: lesson.id,
         title: lesson.title,
         total: lesson.chars.length,
+        hskRange: [
+          Math.min(...lesson.chars.map((item) => item.hskGrade).filter(Boolean)),
+          Math.max(...lesson.chars.map((item) => item.hskGrade).filter(Boolean)),
+        ],
         learned: lesson.chars.filter((item) => learned.has(item.char)).length,
       })),
       learned: rows.length,

@@ -1,6 +1,17 @@
 // c(char, pinyin, meaning, strokes, parts, tip, words)
+const HSK_VOCABULARY = require("./hsk-vocabulary.json");
+const hskGradeOf = (char) => {
+  for (let grade = 1; grade <= 6; grade++) {
+    if (HSK_VOCABULARY[String(grade)].some((word) => word.includes(char))) {
+      return grade;
+    }
+  }
+  return null;
+};
+
 const c = (char, pinyin, meaning, strokes, parts, tip, words) => ({
   char,
+  hskGrade: hskGradeOf(char),
   pinyin,
   meaning,
   strokes,

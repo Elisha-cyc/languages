@@ -30,6 +30,9 @@ export default function HanziHomeScreen({ navigation }) {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>汉字 Chinese characters</Text>
+      <Text style={styles.note}>
+        Character lessons build recognition for words in the official HSK 1–6 vocabulary list.
+      </Text>
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>
@@ -69,7 +72,10 @@ export default function HanziHomeScreen({ navigation }) {
             {lesson.id}. {lesson.title}
           </Text>
           <Text style={styles.lessonSub}>
-            {lesson.learned} of {lesson.total} learned
+            {lesson.learned} of {lesson.total} learned · HSK {lesson.hskRange[0]}
+            {lesson.hskRange[1] !== lesson.hskRange[0]
+              ? `–${lesson.hskRange[1]}`
+              : ""}
           </Text>
         </Pressable>
       ))}
@@ -80,6 +86,7 @@ export default function HanziHomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { padding: 16, backgroundColor: "#f2f4f8", flexGrow: 1 },
   title: { fontSize: 24, fontWeight: "bold" },
+  note: { color: "#555", lineHeight: 20, marginTop: 6 },
   card: {
     backgroundColor: "white",
     borderRadius: 10,
