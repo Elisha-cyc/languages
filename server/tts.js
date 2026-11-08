@@ -125,20 +125,27 @@ async function synthesize(req, res, returnAudioKey = false) {
       `<voice name="${voice[1]}"><mstts:express-as style="chat"><prosody rate="${percent >= 0 ? "+" : ""}${percent}%">` +
       `${escapeXml(spoken)}</prosody></mstts:express-as></voice></speak>`;
 
-    const azure = await fetch(
-      `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`,
-      {
-        method: "POST",
-        headers: {
-          "Ocp-Apim-Subscription-Key": key,
-          "Content-Type": "application/ssml+xml",
-          "X-Microsoft-OutputFormat": "audio-24khz-160kbitrate-mono-mp3",
-          "User-Agent": "LinguaApp",
-        },
-        body: ssml,
-        signal: AbortSignal.timeout(15000),
-      },
-    );
+    const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
+    const headers = {
+      "Ocp-Apim-Subscription-Key": key,
+      "Content-Type": "application/ssml+xml",
+      "X-Microsoft-OutputFormat": "audio-24khz-160kbitrate-mono-mp3",
+      "User-Agent": "LinguaApp",
+    };
+    const requestAzure = (body) => fetch(endpoint, {
+      method: "POST", headers, body, signal: AbortSignal.timeout(15000),
+    });
+    let azure = await requestAzure(ssml);
+
+    // Not every neural voice supports the expressive "chat" style. Retry with
+    // neutral SSML so a valid neural voice still works instead of failing.
+    if (!azure.ok && azure.status === 400) {
+      const neutralSsml =
+        `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${voice[0]}">` +
+        `<voice name="${voice[1]}"><prosody rate="${percent >= 0 ? "+" : ""}${percent}%">` +
+        `${escapeXml(spoken)}</prosody></voice></speak>`;
+      azure = await requestAzure(neutralSsml);
+    }
 
     if (!azure.ok) {
       const detail = (await azure.text()).slice(0, 200);
