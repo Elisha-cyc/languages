@@ -445,6 +445,41 @@ router.post("/review", async (req, res) => {
   }
 });
 
+router.get("/conversation/latest", async (req, res) => {
+  const userId = req.user?.id;
+  const { language, level } = req.query || {};
+  if (!userId || !LANGUAGES.includes(language) || !LEVELS.includes(level)) {
+    return res.status(400).json({ error: "Choose a supported language and level." });
+  }
+  try {
+    const { data: latest, error: latestError } = await supabase.from("course_conversation_turns")
+      .select("conversation_id").eq("user_id", userId).eq("language", language).eq("level", level)
+      .order("created_at", { ascending: false }).limit(1);
+    if (latestError) throw latestError;
+    if (!latest?.length) return res.json({ conversationId: null, messages: [] });
+    const conversationId = latest[0].conversation_id;
+    const { data, error } = await supabase.from("course_conversation_turns")
+      .select("user_message, assistant_message, translation, correction, score, feedback, created_at")
+      .eq("user_id", userId).eq("conversation_id", conversationId)
+      .order("created_at", { ascending: true }).limit(20);
+    if (error) throw error;
+    const messages = [];
+    for (const turn of data || []) {
+      messages.push({ role: "user", content: turn.user_message });
+      messages.push({
+        role: "assistant", content: turn.assistant_message,
+        translation: turn.translation, correction: turn.correction,
+        score: turn.score, strengths: turn.feedback?.strengths || [],
+        vocabulary: turn.feedback?.vocabulary || [],
+      });
+    }
+    res.json({ conversationId, messages });
+  } catch (error) {
+    console.error("Conversation history failed:", String(error.message).slice(0, 200));
+    res.status(502).json({ error: "Could not load your last conversation." });
+  }
+});
+
 router.post("/conversation", async (req, res) => {
   const userId = req.user?.id;
   const { language, level } = req.body || {};
