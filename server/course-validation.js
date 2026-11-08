@@ -37,7 +37,7 @@ function validateLesson(raw, language, level) {
       target: clean(example?.target, 240), pronunciation: clean(example?.pronunciation, 140),
       translation: clean(example?.translation, 240),
     })).filter((example) => example.target && example.translation).slice(0, 4),
-  })).filter((item) => item.name && item.explanation && item.pattern && item.examples.length >= 1);
+  })).filter((item) => item.name && item.explanation && item.pattern && item.examples.length >= 2);
   const questions = (value) => (Array.isArray(value) ? value : []).map((item) => ({
     question: clean(item?.question, 280), options: stringArray(item?.options, 3, 4, 180),
     answerIndex: Number.isInteger(item?.answerIndex) ? item.answerIndex : -1,
@@ -72,7 +72,7 @@ function validateLesson(raw, language, level) {
     review: questions(raw.review),
   };
   if (!lesson.title || lesson.objectives.length < 3 || lesson.vocabulary.length < 6 ||
-      lesson.grammar.length < 1 || lesson.dialogue.length < 4 ||
+      lesson.grammar.length < 2 || lesson.dialogue.length < 4 ||
       !lesson.listening.script || lesson.listening.questions.length < 3 ||
       !lesson.reading.text || lesson.reading.questions.length < 3 ||
       !lesson.speaking.prompt || !lesson.writing.prompt || lesson.review.length < 4) {
