@@ -271,10 +271,6 @@ router.post("/lesson", async (req, res) => {
       updated_at: new Date().toISOString(),
     }, { onConflict: "lesson_id,native_language" });
     if (insertError) throw insertError;
-    const { error: lessonUpdateError } = await supabase.from("lessons")
-      .update({ title: lesson.title, status: "ready", format: "course" })
-      .eq("id", slot.lessonId);
-    if (lessonUpdateError) throw lessonUpdateError;
     await saveVocabulary(userId, language, slot.lessonId, lesson.vocabulary);
     const { error: enrollmentError } = await supabase.from("course_enrollments").upsert({
       user_id: userId, language, level, status: "active", last_activity_at: new Date().toISOString(),
