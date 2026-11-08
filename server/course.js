@@ -214,7 +214,7 @@ router.get("/outline", async (req, res) => {
     const done = new Set((completed || []).map((row) => row.lesson_id));
     let previousLessonsComplete = true;
     const units = (data || []).filter((unit) =>
-      !isChinese(language) || /^HSK [1-6] · Vocabulary \\d+$/.test(unit.title)
+      !isChinese(language) || /^HSK [1-6] · Vocabulary \d+$/.test(unit.title)
     ).sort((a,b) => a.position-b.position).map((unit) => ({
       id: unit.id, title: unit.title, position: unit.position,
       lessons: (unit.lessons || []).sort((a,b) => a.position-b.position).map((lesson) => {
