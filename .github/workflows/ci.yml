@@ -31,7 +31,7 @@ jobs:
           cache: npm
           cache-dependency-path: server/package-lock.json
       - run: npm ci
-      - run: npm test -- course.test.js placement.test.js
+      - run: npm test -- course.test.js placement.test.js auth-flow.test.js
       - run: node --check placement.js
       - run: node --check course.js
       - run: node --check course-validation.js
