@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { makeQuestions } = require("./placement");
+const { makeQuestions, normalizeGeneratedQuestions } = require("./placement");
 
 const words = (prefix, count = 8) => Array.from({ length: count }, (_, index) => ({
   id: prefix * 100 + index + 1,
@@ -47,4 +47,35 @@ test("returns no questions when there are not enough distinct distractors", () =
     { id: 2, word: "two", meaning: "same" },
   ], "Beginner", new Set());
   assert.deepEqual(result, []);
+});
+
+test("accepts five valid AI-generated questions", () => {
+  const raw = Array.from({ length: 5 }, (_, index) => ({
+    prompt: "word " + index,
+    pronunciation: "",
+    options: ["meaning A", "meaning B", "meaning C", "meaning D"],
+    answerIndex: index % 4,
+  }));
+  const result = normalizeGeneratedQuestions(raw, "Intermediate");
+  assert.equal(result.length, 5);
+  assert.equal(result[2].answerIndex, 2);
+  assert.equal(result[0].level, "Intermediate");
+});
+
+test("rejects AI-generated questions with ambiguous or missing options", () => {
+  const raw = Array.from({ length: 5 }, (_, index) => ({
+    prompt: "word " + index,
+    options: ["same", "same", "other", "last"],
+    answerIndex: 0,
+  }));
+  assert.throws(() => normalizeGeneratedQuestions(raw, "Beginner"), /incomplete/i);
+});
+
+test("rejects AI-generated questions with invalid answer indexes", () => {
+  const raw = Array.from({ length: 5 }, (_, index) => ({
+    prompt: "word " + index,
+    options: ["one", "two", "three", "four"],
+    answerIndex: 4,
+  }));
+  assert.throws(() => normalizeGeneratedQuestions(raw, "Advanced"), /incomplete/i);
 });
