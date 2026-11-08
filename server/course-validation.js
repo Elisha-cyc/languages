@@ -81,4 +81,14 @@ function validateLesson(raw, language, level) {
   return lesson;
 }
 
-module.exports = { validateLesson, parseObject };
+
+function isSequentiallyUnlocked(orderedIds, completedIds, lessonId) {
+  const target = Number(lessonId);
+  const index = orderedIds.indexOf(target);
+  if (index < 0) return false;
+  const done = new Set(Array.from(completedIds || []).map(Number));
+  if (done.has(target)) return true;
+  return orderedIds.slice(0, index).every((id) => done.has(Number(id)));
+}
+
+module.exports = { validateLesson, parseObject, isSequentiallyUnlocked };
