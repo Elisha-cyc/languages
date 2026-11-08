@@ -114,6 +114,10 @@ export default function CourseLessonScreen() {
   const [speakingTranscript, setSpeakingTranscript] = useState("");
   const [feedback, setFeedback] = useState({ writing: null, speaking: null });
   const [feedbackBusy, setFeedbackBusy] = useState("");
+  const [conversation, setConversation] = useState([]);
+  const [conversationId, setConversationId] = useState(null);
+  const [conversationInput, setConversationInput] = useState("");
+  const [conversationBusy, setConversationBusy] = useState(false);
   const voice = useVoice(language);
   useQuietOnLeave(() => { stopSpeaking(); voice.cancel(); });
 
@@ -197,6 +201,43 @@ export default function CourseLessonScreen() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function sendConversation() {
+    const message = conversationInput.trim();
+    if (!message || conversationBusy) return;
+    setConversationBusy(true);
+    setError("");
+    setConversation((old) => [...old, { role: "user", content: message }]);
+    try {
+      const response = await fetch(API_URL + "/course/conversation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language, level, message, history: conversation, conversationId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "The AI conversation partner is unavailable.");
+      setConversationId(data.conversationId);
+      setConversation((old) => [...old, {
+        role: "assistant", content: data.reply, translation: data.translation,
+        correction: data.correction, score: data.score, nextQuestion: data.nextQuestion,
+        vocabulary: data.vocabulary || [], strengths: data.strengths || [],
+      }]);
+      setConversationInput("");
+      speak(data.reply, language);
+    } catch (e) {
+      setError(e.message || "Could not send your message.");
+    } finally {
+      setConversationBusy(false);
+    }
+  }
+
+  function startNewConversation() {
+    stopSpeaking();
+    voice.cancel();
+    setConversation([]);
+    setConversationId(null);
+    setConversationInput("");
   }
 
   async function requestFeedback(kind, responseText, prompt, modelAnswer) {
@@ -405,6 +446,38 @@ export default function CourseLessonScreen() {
         <Text style={styles.subTitle}>Example answer</Text>
         <Text style={styles.body}>{lesson.speaking.modelAnswer}</Text>
         <Pressable onPress={() => play(lesson.speaking.modelAnswer)}><Text style={styles.inlineLink}>🔊 Hear example answer</Text></Pressable>
+      </Section>
+
+      <Section title="Talk with your AI partner" subtitle="Have a natural conversation in the language you are learning. The partner adapts to your level, replies aloud and gives gentle corrections.">
+        {conversation.length === 0 ? <Text style={styles.body}>Start with a greeting, answer a question, or talk about today's lesson topic.</Text> : null}
+        {conversation.map((item, i) => (
+          <View key={i} style={styles.dialogueRow}>
+            <Text style={styles.speaker}>{item.role === "user" ? "YOU" : "AI PARTNER"}</Text>
+            <Text style={styles.example}>{item.content}</Text>
+            {item.translation ? <Text style={styles.muted}>{item.translation}</Text> : null}
+            {item.correction ? <Text style={styles.explanation}>Correction: {item.correction}</Text> : null}
+            {item.score !== undefined ? <Text style={styles.muted}>Language-use practice estimate: {item.score}/100 · not a pronunciation score</Text> : null}
+            {item.nextQuestion ? <Text style={styles.body}>{item.nextQuestion}</Text> : null}
+            {item.vocabulary?.map((word, j) => <Text key={j} style={styles.muted}>{word.term} — {word.meaning}</Text>)}
+            {item.role === "assistant" ? <Pressable onPress={() => play(item.content)}><Text style={styles.inlineLink}>🔊 Hear reply again</Text></Pressable> : null}
+          </View>
+        ))}
+        <Text style={styles.label}>Your message</Text>
+        <TextInput value={conversationInput} onChangeText={setConversationInput} placeholder="Write or record what you want to say…" multiline style={styles.input} />
+        <View style={styles.chips}>
+          <Pressable style={styles.chip} disabled={voice.state !== "idle"} onPress={() => voice.toggle({
+            onText: (heard) => setConversationInput(heard),
+            onError: setError,
+          })}>
+            <Text style={styles.chipText}>{voice.state === "listening" ? "Listening…" : "🎤 Speak"}</Text>
+          </Pressable>
+          <Pressable style={styles.chip} disabled={!conversationInput.trim() || conversationBusy} onPress={sendConversation}>
+            <Text style={styles.chipText}>{conversationBusy ? "Thinking…" : "Send message"}</Text>
+          </Pressable>
+          <Pressable style={styles.chip} onPress={startNewConversation}>
+            <Text style={styles.chipText}>New conversation</Text>
+          </Pressable>
+        </View>
       </Section>
 
       <Section title="Writing challenge" subtitle="Write your own answer before looking at the model.">
