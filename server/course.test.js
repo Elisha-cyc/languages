@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { validateLesson, parseObject } = require("./course");
+const { validateLesson, parseObject } = require("./course-validation");
 
 function question(index = 0) {
   return {
