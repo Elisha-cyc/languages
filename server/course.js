@@ -188,8 +188,8 @@ router.get("/outline", async (req, res) => {
     ).map((unit) => ({
       id: unit.id, title: unit.title, position: unit.position,
       lessons: (unit.lessons || []).sort((a,b) => a.position-b.position).map((lesson) => ({
-        id: lesson.id, title: lesson.course_lesson_content?.[0]?.title || lesson.title,
-        position: lesson.position, ready: Boolean(lesson.course_lesson_content?.length),
+        id: lesson.id, title: (Array.isArray(lesson.course_lesson_content) ? lesson.course_lesson_content[0]?.title : lesson.course_lesson_content?.title) || lesson.title,
+        position: lesson.position, ready: Boolean(Array.isArray(lesson.course_lesson_content) ? lesson.course_lesson_content.length : lesson.course_lesson_content),
         completed: done.has(lesson.id),
       })),
     }));
@@ -324,7 +324,7 @@ router.post("/attempt", async (req, res) => {
   const score = Number(req.body?.score);
   const feedback = req.body?.feedback;
   if (!userId || !LANGUAGES.includes(language) || !LEVELS.includes(level) ||
-      !SKILLS.includes(skill) || !Number.isInteger(Number(lessonId)) ||
+      !SKILLS.includes(skill) || !Number.isInteger(Number(lessonId)) || Number(lessonId) <= 0 ||
       !Number.isFinite(score) || score < 0 || score > 100 || !prompt || response == null) {
     return res.status(400).json({ error: "The practice attempt is incomplete or invalid." });
   }
