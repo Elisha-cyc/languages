@@ -183,7 +183,7 @@ router.get("/outline", async (req, res) => {
   try {
     if (isChinese(language)) await ensureHskCurriculum(supabase);
     const { data, error } = await supabase.from("units")
-      .select("id, title, position, languages!inner(name), levels!inner(name), lessons(id, title, position, course_lesson_content(lesson_id, title))")
+      .select("id, title, position, languages!inner(name), levels!inner(name), lessons(id, title, position, course_lesson_content(lesson_id, title, native_language))")
       .eq("languages.name", language).eq("levels.name", level)
       .order("position");
     if (error) throw error;
@@ -195,11 +195,15 @@ router.get("/outline", async (req, res) => {
       !isChinese(language) || /^HSK [1-6] · Vocabulary \d+$/.test(unit.title)
     ).map((unit) => ({
       id: unit.id, title: unit.title, position: unit.position,
-      lessons: (unit.lessons || []).sort((a,b) => a.position-b.position).map((lesson) => ({
-        id: lesson.id, title: (Array.isArray(lesson.course_lesson_content) ? lesson.course_lesson_content[0]?.title : lesson.course_lesson_content?.title) || lesson.title,
-        position: lesson.position, ready: Boolean(Array.isArray(lesson.course_lesson_content) ? lesson.course_lesson_content.length : lesson.course_lesson_content),
-        completed: done.has(lesson.id),
-      })),
+      lessons: (unit.lessons || []).sort((a,b) => a.position-b.position).map((lesson) => {
+        const contents = Array.isArray(lesson.course_lesson_content) ? lesson.course_lesson_content : (lesson.course_lesson_content ? [lesson.course_lesson_content] : []);
+        const content = contents.find((item) => item.native_language === (req.user.nativeLanguage || "English"));
+        return {
+          id: lesson.id, title: content?.title || lesson.title,
+          position: lesson.position, ready: Boolean(content),
+          completed: done.has(lesson.id),
+        };
+      }),
     }));
     res.json(units);
   } catch (error) {
@@ -237,9 +241,10 @@ router.post("/lesson", async (req, res) => {
     } else {
       slot = await findCourseLesson(language, level, topic);
     }
+    const nativeLanguage = req.user.nativeLanguage || "English";
     const { data: cached, error: cacheError } = await supabase
       .from("course_lesson_content").select("title, content, curriculum_standard")
-      .eq("lesson_id", slot.lessonId).maybeSingle();
+      .eq("lesson_id", slot.lessonId).eq("native_language", nativeLanguage).maybeSingle();
     if (cacheError) throw cacheError;
     if (cached) {
       await saveVocabulary(userId, language, slot.lessonId, cached.content.vocabulary || []);
@@ -249,7 +254,6 @@ router.post("/lesson", async (req, res) => {
       return res.json({ lesson: cached.content, lessonId: slot.lessonId, cached: true, curriculum: cached.curriculum_standard });
     }
 
-    const nativeLanguage = req.user.nativeLanguage || "English";
     const hsk = isChinese(language) ? scopeFor(level) : null;
     const plan = isChinese(language) ? lessonPlan(slot.unitTitle, slot.position, level) : null;
     const assignedWords = isChinese(language) ? wordsForLesson(slot.unitTitle, slot.position) : null;
@@ -259,9 +263,10 @@ router.post("/lesson", async (req, res) => {
     });
     const curriculum = hsk ? "HSK 2.0 · six-level vocabulary pathway" : slot.curriculum;
     const { error: insertError } = await supabase.from("course_lesson_content").upsert({
-      lesson_id: slot.lessonId, language, level, topic, title: lesson.title,
-      content: lesson, curriculum_standard: curriculum, updated_at: new Date().toISOString(),
-    }, { onConflict: "lesson_id" });
+      lesson_id: slot.lessonId, language, level, native_language: nativeLanguage,
+      topic, title: lesson.title, content: lesson, curriculum_standard: curriculum,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "lesson_id,native_language" });
     if (insertError) throw insertError;
     const { error: lessonUpdateError } = await supabase.from("lessons")
       .update({ title: lesson.title, status: "ready", format: "course" })
