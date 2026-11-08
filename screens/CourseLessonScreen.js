@@ -238,6 +238,8 @@ export default function CourseLessonScreen() {
         vocabulary: data.vocabulary || [], strengths: data.strengths || [],
       }]);
       setConversationInput("");
+      fetch(API_URL + "/course/progress?language=" + encodeURIComponent(language) + "&level=" + encodeURIComponent(level))
+        .then((r) => r.json()).then(setProgress).catch(() => {});
       speak(data.reply, language);
     } catch (e) {
       setError(e.message || "Could not send your message.");
