@@ -1,7 +1,6 @@
 "use strict";
 
 const express = require("express");
-const supabase = require("./supabase");
 const { LANGUAGES } = require("./curriculum");
 const { completeJson } = require("./aijson");
 const { parseObject } = require("./course-validation");
@@ -104,6 +103,7 @@ async function generateLevelQuestions(language, nativeLanguage, level) {
 }
 
 async function buildPlacementQuestions(language, nativeLanguage = "English") {
+  const supabase = require("./supabase");
   if (!LANGUAGES.includes(language)) {
     const error = new Error("Choose one of the 20 supported languages.");
     error.status = 400;
@@ -187,6 +187,7 @@ router.get("/questions", async (req, res) => {
 });
 
 router.post("/complete", async (req, res) => {
+  const supabase = require("./supabase");
   const userId = req.user?.id;
   const { language, level } = req.body || {};
   if (!userId || !LANGUAGES.includes(language) || !LEVELS.includes(level)) {
