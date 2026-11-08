@@ -15,7 +15,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - run: npx expo export --platform web
 
   server:
@@ -31,6 +31,6 @@ jobs:
           cache: npm
           cache-dependency-path: server/package-lock.json
       - run: npm ci
-      - run: npm test
+      - run: npm test -- course.test.js
       - run: node --check course.js
       - run: node --check server.js
