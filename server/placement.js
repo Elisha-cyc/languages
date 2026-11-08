@@ -7,6 +7,24 @@ const { parseObject } = require("./course-validation");
 
 const router = express.Router();
 const LEVELS = ["Beginner", "Intermediate", "Advanced"];
+const assessmentRequests = new Map();
+
+function underPlacementLimit(userId) {
+  const now = Date.now();
+  const recent = (assessmentRequests.get(userId) || []).filter((time) => now - time < 3600000);
+  if (recent.length >= 3) {
+    assessmentRequests.set(userId, recent);
+    return false;
+  }
+  recent.push(now);
+  assessmentRequests.set(userId, recent);
+  if (assessmentRequests.size > 5000) {
+    for (const [id, times] of assessmentRequests) {
+      if (!times.some((time) => now - time < 3600000)) assessmentRequests.delete(id);
+    }
+  }
+  return true;
+}
 
 function shuffle(items) {
   const copy = [...items];
@@ -181,6 +199,9 @@ async function buildPlacementQuestions(language, nativeLanguage = "English") {
 router.get("/questions", async (req, res) => {
   try {
     const language = String(req.query.language || "");
+    if (!underPlacementLimit(req.user.id)) {
+      return res.status(429).json({ error: "You have reached the placement assessment limit. Try again in an hour." });
+    }
     const questions = await buildPlacementQuestions(language, req.user?.nativeLanguage || "English");
     res.json({ language, questions });
   } catch (error) {
