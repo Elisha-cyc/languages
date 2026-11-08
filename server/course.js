@@ -248,9 +248,10 @@ router.post("/lesson", async (req, res) => {
     if (cacheError) throw cacheError;
     if (cached) {
       await saveVocabulary(userId, language, slot.lessonId, cached.content.vocabulary || []);
-      await supabase.from("course_enrollments").upsert({
+      const { error: cachedEnrollmentError } = await supabase.from("course_enrollments").upsert({
         user_id: userId, language, level, status: "active", last_activity_at: new Date().toISOString(),
       }, { onConflict: "user_id,language,level" });
+      if (cachedEnrollmentError) throw cachedEnrollmentError;
       return res.json({ lesson: cached.content, lessonId: slot.lessonId, cached: true, curriculum: cached.curriculum_standard });
     }
 
