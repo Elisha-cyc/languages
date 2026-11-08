@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { validateLesson, parseObject } = require("./course-validation");
+const { validateLesson, parseObject, isSequentiallyUnlocked } = require("./course-validation");
 
 function question(index = 0) {
   return {
@@ -91,4 +91,18 @@ test("rejects ambiguous or malformed multiple-choice questions", () => {
 
 test("parses JSON returned inside a markdown code fence", () => {
   assert.deepEqual(parseObject('' + String.fromCharCode(96).repeat(3) + 'json\n{"ok":true}\n' + String.fromCharCode(96).repeat(3)), { ok: true });
+});
+
+test("unlocks only the first lesson until earlier lessons are passed", () => {
+  const ordered = [11, 12, 13, 14];
+  assert.equal(isSequentiallyUnlocked(ordered, [], 11), true);
+  assert.equal(isSequentiallyUnlocked(ordered, [], 12), false);
+  assert.equal(isSequentiallyUnlocked(ordered, [11], 12), true);
+  assert.equal(isSequentiallyUnlocked(ordered, [11, 12], 14), false);
+  assert.equal(isSequentiallyUnlocked(ordered, [11, 12, 13], 14), true);
+});
+
+test("allows learners to revisit a completed lesson", () => {
+  assert.equal(isSequentiallyUnlocked([1, 2, 3], [2], 2), true);
+  assert.equal(isSequentiallyUnlocked([1, 2, 3], [], 99), false);
 });
