@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { API_URL, NATIVE_LANGUAGE } from "../config";
+import { API_URL } from "../config";
 import LanguagePicker from "../components/LanguagePicker";
 import { speak, speakAndWait, stopSpeaking } from "../speech";
 import { useVoice } from "../voice";
@@ -205,10 +205,6 @@ export default function CourseLessonScreen() {
     ...(lesson.reading.questions || []),
     ...(lesson.review || []),
   ];
-  const completedQuestions = allQuestions.filter((_, i) => checked[
-    i < lesson.listening.questions.length ? "Listening" :
-      i < lesson.listening.questions.length + lesson.reading.questions.length ? "Reading" : "Review"
-  ]).length;
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
