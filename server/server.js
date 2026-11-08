@@ -60,6 +60,7 @@ app.get("/", (req, res) => {
 app.use("/chat", require("./chat"));
 app.use("/hanzi", require("./hanzi"));
 app.use("/speech", require("./speech"));
+app.use("/course", require("./course"));
 
 // ---------- Curriculum ----------
 
