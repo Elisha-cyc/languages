@@ -50,6 +50,33 @@ function makeQuestions(words, level, usedIds) {
 }
 
 
+function normalizeGeneratedQuestions(rawQuestions, level) {
+  if (!Array.isArray(rawQuestions)) throw new Error("The placement assessment could not be generated.");
+  const questions = rawQuestions.slice(0, 5).map((item, index) => {
+    const options = Array.isArray(item.options)
+      ? item.options.map((option) => typeof option === "string" ? option.trim() : "")
+      : [];
+    const answerIndex = Number(item.answerIndex);
+    if (
+      typeof item.prompt !== "string" || !item.prompt.trim() ||
+      options.length !== 4 || options.some((option) => !option) ||
+      new Set(options).size !== 4 ||
+      !Number.isInteger(answerIndex) || answerIndex < 0 || answerIndex > 3
+    ) return null;
+    return {
+      id: "ai-" + level.toLowerCase() + "-" + index,
+      level,
+      prompt: item.prompt.trim().slice(0, 120),
+      pronunciation: typeof item.pronunciation === "string" ? item.pronunciation.trim().slice(0, 120) : "",
+      options: options.map((option) => option.slice(0, 180)),
+      answerIndex,
+    };
+  }).filter(Boolean);
+
+  if (questions.length < 5) throw new Error("The placement assessment returned incomplete questions.");
+  return questions;
+}
+
 async function generateLevelQuestions(language, nativeLanguage, level) {
   const reply = await completeJson([
     {
@@ -77,31 +104,8 @@ async function generateLevelQuestions(language, nativeLanguage, level) {
   ], 2200);
 
   const parsed = parseObject(reply);
-  if (!Array.isArray(parsed.questions)) throw new Error("The placement assessment could not be generated.");
-  const questions = parsed.questions.slice(0, 5).map((item, index) => {
-    const options = Array.isArray(item.options)
-      ? item.options.map((option) => String(option || "").trim()).filter(Boolean)
-      : [];
-    const answerIndex = Number(item.answerIndex);
-    if (
-      typeof item.prompt !== "string" || !item.prompt.trim() ||
-      options.length !== 4 || new Set(options).size !== 4 ||
-      !Number.isInteger(answerIndex) || answerIndex < 0 || answerIndex > 3
-    ) return null;
-    return {
-      id: "ai-" + level.toLowerCase() + "-" + index + "-" + Math.random().toString(36).slice(2, 8),
-      level,
-      prompt: item.prompt.trim().slice(0, 120),
-      pronunciation: typeof item.pronunciation === "string" ? item.pronunciation.trim().slice(0, 120) : "",
-      options: options.map((option) => option.slice(0, 180)),
-      answerIndex,
-    };
-  }).filter(Boolean);
-
-  if (questions.length < 5) throw new Error("The placement assessment returned incomplete questions.");
-  return questions;
+  return normalizeGeneratedQuestions(parsed.questions, level);
 }
-
 async function buildPlacementQuestions(language, nativeLanguage = "English") {
   const supabase = require("./supabase");
   if (!LANGUAGES.includes(language)) {
@@ -221,3 +225,4 @@ module.exports = router;
 module.exports.buildPlacementQuestions = buildPlacementQuestions;
 module.exports.makeQuestions = makeQuestions;
 module.exports.generateLevelQuestions = generateLevelQuestions;
+module.exports.normalizeGeneratedQuestions = normalizeGeneratedQuestions;
