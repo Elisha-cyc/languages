@@ -76,14 +76,32 @@ function topicMatchesUnit(topic, title) {
 }
 
 async function lessonIsUnlocked(userId, lessonId, language, level) {
-  const { data: units, error: unitsError } = await supabase.from("units")
+  let query = supabase.from("units")
     .select("id, position, title, languages!inner(name), levels!inner(name), lessons(id, position)")
-    .eq("languages.name", language).eq("levels.name", level).order("position");
+    .eq("languages.name", language);
+  if (!isChinese(language)) query = query.eq("levels.name", level);
+  const { data: units, error: unitsError } = await query.order("position");
   if (unitsError) throw unitsError;
-  const ordered = (units || [])
-    .filter((unit) => !isChinese(language) || /^HSK [1-6] · Vocabulary \d+$/.test(unit.title))
-    .sort((a,b) => a.position-b.position)
-    .flatMap((unit) => (unit.lessons || []).sort((a,b) => a.position-b.position).map((lesson) => lesson.id));
+  const maxGrade = isChinese(language) ? Math.max(...gradesFor(level)) : 0;
+  const eligible = (units || []).filter((unit) => {
+    if (!isChinese(language)) return true;
+    const match = unit.title.match(/^HSK ([1-6]) · Vocabulary \d+$/);
+    return match && Number(match[1]) <= maxGrade;
+  });
+  const orderedUnits = eligible.sort((a,b) => {
+    if (isChinese(language)) {
+      const gradeA = Number(a.title.match(/^HSK ([1-6])/)[1]);
+      const gradeB = Number(b.title.match(/^HSK ([1-6])/)[1]);
+      if (gradeA !== gradeB) return gradeA - gradeB;
+      const blockA = Number(a.title.match(/Vocabulary (\d+)$/)[1]);
+      const blockB = Number(b.title.match(/Vocabulary (\d+)$/)[1]);
+      return blockA - blockB;
+    }
+    return a.position - b.position;
+  });
+  const ordered = orderedUnits.flatMap((unit) =>
+    (unit.lessons || []).sort((a,b) => a.position-b.position).map((lesson) => lesson.id)
+  );
   const index = ordered.indexOf(Number(lessonId));
   if (index < 0) return false;
   const { data: completed, error } = await supabase.from("progress")
@@ -118,7 +136,10 @@ async function findCourseLesson(language, level, topic, nativeLanguage = "Englis
     if (progressError) throw progressError;
     const done = new Set((completed || []).map((row) => row.lesson_id));
     const chosen = (lessons || []).find((lesson) => !done.has(lesson.id));
-    if (!chosen) throw new Error("You have reached the available HSK lesson slots. More lessons are being prepared.");
+    if (!chosen) throw new Error("You have completed the available HSK lessons for this level.");
+    if (!(await lessonIsUnlocked(userId, chosen.id, language, level))) {
+      throw new Error("Complete the previous HSK level before starting this one.");
+    }
     return { lessonId: chosen.id, unitTitle: gradeUnits.find((unit) => unit.id === chosen.unit_id)?.title, position: chosen.position, curriculum: "HSK 2.0 · six-level vocabulary pathway" };
   }
 
@@ -141,7 +162,12 @@ async function findCourseLesson(language, level, topic, nativeLanguage = "Englis
     if (progressError) throw progressError;
     const done = new Set((completed || []).map((row) => row.lesson_id));
     const chosen = (lessons || []).find((lesson) => !done.has(lesson.id));
-    if (chosen) return { lessonId: chosen.id, unitTitle: unit.title, position: chosen.position, curriculum: "CEFR-informed guided course" };
+    if (chosen) {
+      if (!(await lessonIsUnlocked(userId, chosen.id, language, level))) {
+        throw new Error("Complete the previous lesson before moving to this unit.");
+      }
+      return { lessonId: chosen.id, unitTitle: unit.title, position: chosen.position, curriculum: "CEFR-informed guided course" };
+    }
   }
   throw new Error("All lesson slots for this course are in use. Please choose another topic or level.");
 }
@@ -212,10 +238,12 @@ router.get("/outline", async (req, res) => {
       .select("lesson_id").eq("user_id", req.user.id);
     if (progressError) throw progressError;
     const done = new Set((completed || []).map((row) => row.lesson_id));
-    let previousLessonsComplete = true;
-    const units = (data || []).filter((unit) =>
+    const eligibleUnits = (data || []).filter((unit) =>
       !isChinese(language) || /^HSK [1-6] · Vocabulary \d+$/.test(unit.title)
-    ).sort((a,b) => a.position-b.position).map((unit) => ({
+    ).sort((a,b) => a.position-b.position);
+    const firstLessonId = eligibleUnits.flatMap((unit) => (unit.lessons || []).sort((a,b) => a.position-b.position))[0]?.id;
+    let previousLessonsComplete = firstLessonId ? await lessonIsUnlocked(req.user.id, firstLessonId, language, level) : true;
+    const units = eligibleUnits.map((unit) => ({
       id: unit.id, title: unit.title, position: unit.position,
       lessons: (unit.lessons || []).sort((a,b) => a.position-b.position).map((lesson) => {
         const contents = Array.isArray(lesson.course_lesson_content) ? lesson.course_lesson_content : (lesson.course_lesson_content ? [lesson.course_lesson_content] : []);
