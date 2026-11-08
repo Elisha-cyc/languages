@@ -2,7 +2,7 @@ name: LinguaApp CI
 
 on:
   push:
-    branches: [main, complete-hsk-course-lessons]
+    branches: [main, complete-hsk-course-lessons, finish-placement-assessment]
   pull_request:
     branches: [main]
 
@@ -32,6 +32,7 @@ jobs:
           cache-dependency-path: server/package-lock.json
       - run: npm ci
       - run: npm test -- course.test.js
+      - run: node --check placement.js
       - run: node --check course.js
       - run: node --check course-validation.js
       - run: node --check tts.js
