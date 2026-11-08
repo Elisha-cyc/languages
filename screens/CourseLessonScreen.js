@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -40,7 +40,7 @@ function Section({ title, subtitle, children }) {
   );
 }
 
-function QuestionSet({ title, questions, answers, setAnswers, checked, setChecked }) {
+function QuestionSet({ title, questions, answers, setAnswers, checked, setChecked, onComplete }) {
   if (!questions?.length) return null;
   const score = questions.filter((q, i) => answers[title + i] === String(q.answerIndex)).length;
   return (
@@ -84,7 +84,7 @@ function QuestionSet({ title, questions, answers, setAnswers, checked, setChecke
         <Pressable
           style={styles.secondaryButton}
           disabled={questions.some((_, i) => answers[title + i] === undefined)}
-          onPress={() => setChecked((old) => ({ ...old, [title]: true }))}
+          onPress={() => { setChecked((old) => ({ ...old, [title]: true })); onComplete?.(score, questions.length); }}
         >
           <Text style={styles.secondaryText}>Check {title.toLowerCase()}</Text>
         </Pressable>
@@ -100,6 +100,12 @@ export default function CourseLessonScreen() {
   const [level, setLevel] = useState("Beginner");
   const [topic, setTopic] = useState(TOPICS[0]);
   const [lesson, setLesson] = useState(null);
+  const [lessonId, setLessonId] = useState(null);
+  const [units, setUnits] = useState([]);
+  const [selectedUnitId, setSelectedUnitId] = useState(null);
+  const [selectedLessonId, setSelectedLessonId] = useState(null);
+  const [outlineLoading, setOutlineLoading] = useState(false);
+  const [progress, setProgress] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [answers, setAnswers] = useState({});
@@ -111,12 +117,65 @@ export default function CourseLessonScreen() {
   const voice = useVoice(language);
   useQuietOnLeave(() => { stopSpeaking(); voice.cancel(); });
 
+  useEffect(() => {
+    let cancelled = false;
+    setOutlineLoading(true);
+    setSelectedUnitId(null);
+    setSelectedLessonId(null);
+    setProgress(null);
+    Promise.all([
+      fetch(API_URL + "/course/outline?language=" + encodeURIComponent(language) + "&level=" + encodeURIComponent(level)).then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Could not load course outline.");
+        return d;
+      }),
+      fetch(API_URL + "/course/progress?language=" + encodeURIComponent(language) + "&level=" + encodeURIComponent(level)).then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Could not load progress.");
+        return d;
+      }),
+    ]).then(([outline, savedProgress]) => {
+      if (!cancelled) { setUnits(outline); setProgress(savedProgress); }
+    }).catch((e) => {
+      if (!cancelled) setError(e.message);
+    }).finally(() => {
+      if (!cancelled) setOutlineLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [language, level]);
+
+  async function recordAttempt(skill, prompt, responseValue, score, feedbackValue = null) {
+    if (!lessonId) return;
+    const response = await fetch(API_URL + "/course/attempt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language, level, skill, lessonId, prompt, response: responseValue, score, feedback: feedbackValue }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not save your practice result.");
+    return data;
+  }
+
+  async function reviewVocabulary(term, quality) {
+    const response = await fetch(API_URL + "/course/review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language, term, quality }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Could not save your review.");
+    setProgress((old) => old ? ({
+      ...old, dueVocabulary: (old.dueVocabulary || []).filter((item) => item.term !== term),
+    }) : old);
+  }
+
   async function generate() {
     stopSpeaking();
     voice.cancel();
     setLoading(true);
     setError("");
     setLesson(null);
+    setLessonId(null);
     setAnswers({});
     setChecked({});
     setWriting("");
@@ -126,12 +185,13 @@ export default function CourseLessonScreen() {
       const response = await fetch(API_URL + "/course/lesson", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ language, level, topic }),
+        body: JSON.stringify({ language, level, topic, lessonId: selectedLessonId }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not prepare the lesson.");
       if (!data.lesson) throw new Error("The lesson response was incomplete.");
       setLesson(data.lesson);
+      setLessonId(data.lessonId);
     } catch (e) {
       setError(e.message || "Could not prepare the lesson.");
     } finally {
@@ -156,6 +216,7 @@ export default function CourseLessonScreen() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not assess your answer.");
+      await recordAttempt(kind, prompt, responseText, data.score, data);
       setFeedback((old) => ({ ...old, [kind]: data }));
     } catch (e) {
       setError(e.message || "Could not assess your answer.");
@@ -186,6 +247,42 @@ export default function CourseLessonScreen() {
             </Pressable>
           ))}
         </View>
+        <Section title="Your course outline" subtitle="Choose a unit and follow its lessons in order. Completed lessons stay saved to your account.">
+          {outlineLoading ? <ActivityIndicator /> : null}
+          {units.map((unit) => (
+            <View key={unit.id} style={styles.wordCard}>
+              <Pressable onPress={() => { setSelectedUnitId(selectedUnitId === unit.id ? null : unit.id); setSelectedLessonId(null); setTopic(unit.title); }}>
+                <Text style={styles.subTitle}>{unit.title}</Text>
+                <Text style={styles.muted}>{unit.lessons.filter((item) => item.completed).length} of {unit.lessons.length} lessons completed</Text>
+              </Pressable>
+              {selectedUnitId === unit.id ? unit.lessons.map((item) => (
+                <Pressable key={item.id} style={[styles.topic, selectedLessonId === item.id && styles.topicOn]} onPress={() => { setSelectedLessonId(item.id); setTopic(unit.title); }}>
+                  <Text style={styles.topicText}>{item.completed ? "✓ " : ""}{item.title}</Text>
+                  <Text style={styles.muted}>{item.ready ? "Lesson content ready" : "New lesson · prepared when opened"}</Text>
+                </Pressable>
+              )) : null}
+            </View>
+          ))}
+        </Section>
+        {progress ? (
+          <Section title="Your saved progress" subtitle={progress.dueVocabulary?.length ? progress.dueVocabulary.length + " vocabulary items are ready to review." : "Your learning history is saved here."}>
+            <Text style={styles.body}>{progress.completedLessons || 0} lessons completed</Text>
+            {progress.skills?.map((item) => (
+              <Text key={item.skill} style={styles.bullet}>{item.skill}: {item.attempts} attempts · best {item.best_score ?? 0}%</Text>
+            ))}
+            {progress.dueVocabulary?.slice(0, 8).map((item) => (
+              <View key={item.term} style={styles.wordCard}>
+                <Text style={styles.word}>{item.term}</Text>
+                <Text style={styles.meaning}>{item.meaning}</Text>
+                <View style={styles.chips}>
+                  <Pressable style={styles.chip} onPress={() => reviewVocabulary(item.term, 1).catch((e) => setError(e.message))}><Text style={styles.chipText}>Again</Text></Pressable>
+                  <Pressable style={styles.chip} onPress={() => reviewVocabulary(item.term, 3).catch((e) => setError(e.message))}><Text style={styles.chipText}>Good</Text></Pressable>
+                  <Pressable style={styles.chip} onPress={() => reviewVocabulary(item.term, 5).catch((e) => setError(e.message))}><Text style={styles.chipText}>Easy</Text></Pressable>
+                </View>
+              </View>
+            ))}
+          </Section>
+        ) : null}
         <Text style={styles.label}>What do you want to learn?</Text>
         {TOPICS.map((item) => (
           <Pressable key={item} onPress={() => setTopic(item)} style={[styles.topic, topic === item && styles.topicOn]}>
@@ -277,7 +374,7 @@ export default function CourseLessonScreen() {
           <Text style={styles.secondaryText}>Play slowly</Text>
         </Pressable>
         <Text style={styles.body}>{lesson.listening.script}</Text>
-        <QuestionSet title="Listening" questions={lesson.listening.questions} answers={answers} setAnswers={setAnswers} checked={checked} setChecked={setChecked} />
+        <QuestionSet title="Listening" questions={lesson.listening.questions} answers={answers} setAnswers={setAnswers} checked={checked} setChecked={setChecked} onComplete={(score,total) => recordAttempt("listening", lesson.listening.instruction, { answers, questions: lesson.listening.questions }, Math.round(score / total * 100))} />
       </Section>
 
       <Section title="Reading comprehension" subtitle={lesson.reading.instruction}>
@@ -285,7 +382,7 @@ export default function CourseLessonScreen() {
         <Pressable onPress={() => play(lesson.reading.text)}><Text style={styles.inlineLink}>🔊 Listen while reading</Text></Pressable>
         <Text style={styles.subTitle}>Translation</Text>
         <Text style={styles.body}>{lesson.reading.translation}</Text>
-        <QuestionSet title="Reading" questions={lesson.reading.questions} answers={answers} setAnswers={setAnswers} checked={checked} setChecked={setChecked} />
+        <QuestionSet title="Reading" questions={lesson.reading.questions} answers={answers} setAnswers={setAnswers} checked={checked} setChecked={setChecked} onComplete={(score,total) => recordAttempt("reading", lesson.reading.instruction, { answers, questions: lesson.reading.questions }, Math.round(score / total * 100))} />
       </Section>
 
       <Section title="Speaking challenge" subtitle="Answer in your own words. Speak naturally; do not just repeat the model.">
@@ -322,7 +419,7 @@ export default function CourseLessonScreen() {
         <Text style={styles.body}>{lesson.writing.modelAnswer}</Text>
       </Section>
 
-      <QuestionSet title="Review" questions={lesson.review} answers={answers} setAnswers={setAnswers} checked={checked} setChecked={setChecked} />
+      <QuestionSet title="Review" questions={lesson.review} answers={answers} setAnswers={setAnswers} checked={checked} setChecked={setChecked} onComplete={(score,total) => recordAttempt("review", "Lesson knowledge review", { answers, questions: lesson.review }, Math.round(score / total * 100))} />
       <Section title="Lesson complete">
         <Text style={styles.body}>You have worked through vocabulary, grammar, conversation, listening, reading, speaking and writing. Review any questions you missed and repeat the speaking and writing tasks later.</Text>
         <Text style={styles.scoreLine}>Sections checked: {Object.keys(checked).length} · Question groups available: {allQuestions.length > 0 ? 3 : 0}</Text>
