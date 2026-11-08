@@ -24,7 +24,17 @@ function lessonFixture() {
     grammar: [{
       name: "Polite requests", explanation: "Use this pattern for polite requests.",
       pattern: "Could I have + noun?",
-      examples: [{ target: "Could I have tea?", pronunciation: "", translation: "May I have tea?" }],
+      examples: [
+        { target: "Could I have tea?", pronunciation: "", translation: "May I have tea?" },
+        { target: "Could I have water?", pronunciation: "", translation: "May I have water?" },
+      ],
+    }, {
+      name: "Please", explanation: "Add please to make a request more polite.",
+      pattern: "Please + verb",
+      examples: [
+        { target: "Please sit down.", pronunciation: "", translation: "Please take a seat." },
+        { target: "Please wait here.", pronunciation: "", translation: "Wait here, please." },
+      ],
     }],
     dialogue: Array.from({ length: 6 }, (_, i) => ({
       speaker: i % 2 ? "Server" : "Customer", text: "Line " + i,
