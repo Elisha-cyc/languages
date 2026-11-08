@@ -75,7 +75,7 @@ function topicMatchesUnit(topic, title) {
   return score;
 }
 
-async function findCourseLesson(language, level, topic) {
+async function findCourseLesson(language, level, topic, nativeLanguage = "English") {
   if (isChinese(language)) {
     await ensureHskCurriculum(supabase);
     const grades = gradesFor(level);
@@ -95,7 +95,7 @@ async function findCourseLesson(language, level, topic) {
     if (lessonError) throw lessonError;
     const lessonIds = (lessons || []).map((lesson) => lesson.id);
     const { data: contents, error: contentError } = await supabase
-      .from("course_lesson_content").select("lesson_id").in("lesson_id", lessonIds);
+      .from("course_lesson_content").select("lesson_id").eq("native_language", nativeLanguage).in("lesson_id", lessonIds);
     if (contentError) throw contentError;
     const used = new Set((contents || []).map((row) => row.lesson_id));
     const chosen = (lessons || []).find((lesson) => !used.has(lesson.id));
@@ -241,7 +241,7 @@ router.post("/lesson", async (req, res) => {
       slot = { lessonId: selected.id, unitTitle, position, topic: plan?.topic, grammarFocus: plan?.grammar,
         curriculum: isChinese(language) ? "HSK 2.0 · six-level vocabulary pathway" : "CEFR-informed guided course" };
     } else {
-      slot = await findCourseLesson(language, level, topic);
+      slot = await findCourseLesson(language, level, topic, req.user.nativeLanguage || "English");
     }
     const nativeLanguage = req.user.nativeLanguage || "English";
     const { data: cached, error: cacheError } = await supabase
