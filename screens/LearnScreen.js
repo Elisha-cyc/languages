@@ -5,6 +5,12 @@ export default function LearnScreen({ navigation }) {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Tile
+        icon="🎓"
+        title="Complete language lesson"
+        text="Learn vocabulary, grammar, listening, speaking, reading and writing"
+        onPress={() => navigation.navigate("CourseLesson")}
+      />
+      <Tile
         icon="📚"
         title="Curriculum"
         text="Choose a language, a level and a unit"
