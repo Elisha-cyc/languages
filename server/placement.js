@@ -3,6 +3,8 @@
 const express = require("express");
 const supabase = require("./supabase");
 const { LANGUAGES } = require("./curriculum");
+const { completeJson } = require("./aijson");
+const { parseObject } = require("./course-validation");
 
 const router = express.Router();
 const LEVELS = ["Beginner", "Intermediate", "Advanced"];
@@ -48,7 +50,60 @@ function makeQuestions(words, level, usedIds) {
   return questions;
 }
 
-async function buildPlacementQuestions(language) {
+
+async function generateLevelQuestions(language, nativeLanguage, level) {
+  const reply = await completeJson([
+    {
+      role: "system",
+      content: [
+        "You are an expert language assessment designer.",
+        "Create five accurate multiple-choice vocabulary questions for a language placement diagnostic.",
+        "Return one JSON object only. Every question must have exactly four distinct options and one unambiguous correct answer.",
+        "The prompt and options must be in the target language and the meanings/options must be in the learner's explanation language.",
+        "For Mandarin Chinese include simplified characters and tone-marked pinyin in pronunciation.",
+        "Do not use obscure, regional, archaic or disputed translations.",
+      ].join("\\n"),
+    },
+    {
+      role: "user",
+      content: [
+        "Target language: " + language,
+        "Learner explanation language: " + nativeLanguage,
+        "Level: " + level,
+        "Generate five different words or short phrases suitable for this level.",
+        'Return {"questions":[{"prompt":"target-language word","pronunciation":"transliteration or empty string","options":["meaning 1","meaning 2","meaning 3","meaning 4"],"answerIndex":0}]}',
+        "Use answerIndex from 0 to 3 and vary its position. Do not include the answer in the prompt.",
+      ].join("\\n"),
+    },
+  ], 2200);
+
+  const parsed = parseObject(reply);
+  if (!Array.isArray(parsed.questions)) throw new Error("The placement assessment could not be generated.");
+  const questions = parsed.questions.slice(0, 5).map((item, index) => {
+    const options = Array.isArray(item.options)
+      ? item.options.map((option) => String(option || "").trim()).filter(Boolean)
+      : [];
+    const answerIndex = Number(item.answerIndex);
+    if (
+      typeof item.prompt !== "string" || !item.prompt.trim() ||
+      options.length !== 4 || new Set(options).size !== 4 ||
+      !Number.isInteger(answerIndex) || answerIndex < 0 || answerIndex > 3
+    ) return null;
+    return {
+      id: "ai-" + level.toLowerCase() + "-" + index + "-" + Math.random().toString(36).slice(2, 8),
+      level,
+      prompt: item.prompt.trim().slice(0, 120),
+      pronunciation: typeof item.pronunciation === "string" ? item.pronunciation.trim().slice(0, 120) : "",
+      options: options.map((option) => option.slice(0, 180)),
+      answerIndex,
+    };
+  }).filter(Boolean);
+
+  if (questions.length < 5) throw new Error("The placement assessment returned incomplete questions.");
+  return questions;
+}
+
+async function buildPlacementQuestions(language, nativeLanguage = "English") {
   if (!LANGUAGES.includes(language)) {
     const error = new Error("Choose one of the 20 supported languages.");
     error.status = 400;
@@ -105,13 +160,15 @@ async function buildPlacementQuestions(language) {
   const usedIds = new Set();
   const questions = [];
   for (const level of LEVELS) {
-    questions.push(...makeQuestions(wordsByLevel[level], level, usedIds));
-  }
-
-  if (questions.length < 6) {
-    const error = new Error("There is not enough vocabulary to assess this language yet.");
-    error.status = 422;
-    throw error;
+    const seeded = makeQuestions(wordsByLevel[level], level, usedIds);
+    if (seeded.length >= 3) {
+      questions.push(...seeded);
+    } else {
+      // Several supported languages have course scaffolding but not a seeded
+      // word bank yet. Generate a small level-specific diagnostic instead of
+      // making placement unavailable for those learners.
+      questions.push(...await generateLevelQuestions(language, nativeLanguage, level));
+    }
   }
 
   return shuffle(questions);
@@ -120,7 +177,7 @@ async function buildPlacementQuestions(language) {
 router.get("/questions", async (req, res) => {
   try {
     const language = String(req.query.language || "");
-    const questions = await buildPlacementQuestions(language);
+    const questions = await buildPlacementQuestions(language, req.user?.nativeLanguage || "English");
     res.json({ language, questions });
   } catch (error) {
     res.status(error.status || 500).json({
@@ -162,3 +219,4 @@ router.post("/complete", async (req, res) => {
 module.exports = router;
 module.exports.buildPlacementQuestions = buildPlacementQuestions;
 module.exports.makeQuestions = makeQuestions;
+module.exports.generateLevelQuestions = generateLevelQuestions;
