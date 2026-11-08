@@ -199,6 +199,9 @@ async function buildPlacementQuestions(language, nativeLanguage = "English") {
 router.get("/questions", async (req, res) => {
   try {
     const language = String(req.query.language || "");
+    if (!LANGUAGES.includes(language)) {
+      return res.status(400).json({ error: "Choose one of the 20 supported languages." });
+    }
     if (!underPlacementLimit(req.user.id)) {
       return res.status(429).json({ error: "You have reached the placement assessment limit. Try again in an hour." });
     }
