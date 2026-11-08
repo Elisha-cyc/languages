@@ -129,7 +129,9 @@ export async function voiceReport({ refresh = false } = {}) {
   const voices = await loadVoices(refresh);
   let cloudReady = false;
   try {
-    const response = await fetch(`${API_URL}/tts/status`);
+    const response = await fetch(`${API_URL}/tts/status`, {
+      headers: { Authorization: `Bearer ${getAuthToken()}` },
+    });
     if (response.ok) {
       cloudReady = (await response.json()).configured === true;
       if (cloudReady) cloudOffUntil = 0;
@@ -335,7 +337,10 @@ function setWebMediaState(state) {
 async function fetchCloudAudio(text, language, rate) {
   const res = await fetch(`${API_URL}/tts`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${getAuthToken()}`,
+    },
     body: JSON.stringify({ text, language, rate }),
   });
   if (res.status === 501) {
