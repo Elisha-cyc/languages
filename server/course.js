@@ -235,6 +235,12 @@ router.post("/lesson", async (req, res) => {
       if (!selected || selected.units.languages.name !== language || selected.units.levels.name !== level) {
         return res.status(404).json({ error: "That lesson does not belong to this course." });
       }
+      if (isChinese(language)) {
+        const gradeMatch = selected.units.title.match(/^HSK ([1-6]) · Vocabulary \d+$/);
+        if (!gradeMatch || !gradesFor(level).includes(Number(gradeMatch[1]))) {
+          return res.status(404).json({ error: "Choose a lesson from the HSK pathway for this level." });
+        }
+      }
       const unitTitle = selected.units.title;
       const position = selected.position;
       const plan = isChinese(language) ? lessonPlan(unitTitle, position, level) : null;
