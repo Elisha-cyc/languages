@@ -138,8 +138,18 @@ export default function CourseLessonScreen() {
         if (!r.ok) throw new Error(d.error || "Could not load progress.");
         return d;
       }),
-    ]).then(([outline, savedProgress]) => {
-      if (!cancelled) { setUnits(outline); setProgress(savedProgress); }
+      fetch(API_URL + "/course/conversation/latest?language=" + encodeURIComponent(language) + "&level=" + encodeURIComponent(level)).then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Could not load conversation.");
+        return d;
+      }),
+    ]).then(([outline, savedProgress, savedConversation]) => {
+      if (!cancelled) {
+        setUnits(outline);
+        setProgress(savedProgress);
+        setConversation(savedConversation.messages || []);
+        setConversationId(savedConversation.conversationId || null);
+      }
     }).catch((e) => {
       if (!cancelled) setError(e.message);
     }).finally(() => {
