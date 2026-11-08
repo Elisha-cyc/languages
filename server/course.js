@@ -4,7 +4,7 @@ const express = require("express");
 const { completeJson } = require("./aijson");
 const supabase = require("./supabase");
 const { LANGUAGES } = require("./curriculum");
-const { isChinese, scopeFor, gradesFor } = require("./hsk");
+const { isChinese, scopeFor, gradesFor, wordsForLesson, lessonPlan } = require("./hsk");
 const { ensureHskCurriculum } = require("./ensure-hsk-curriculum");
 const { validateLesson, parseObject } = require("./course-validation");
 
@@ -98,7 +98,7 @@ async function findCourseLesson(language, level, topic) {
     const used = new Set((contents || []).map((row) => row.lesson_id));
     const chosen = (lessons || []).find((lesson) => !used.has(lesson.id));
     if (!chosen) throw new Error("You have reached the available HSK lesson slots. More lessons are being prepared.");
-    return { lessonId: chosen.id, curriculum: "HSK 2.0 · six-level vocabulary pathway" };
+    return { lessonId: chosen.id, unitTitle: gradeUnits.find((unit) => unit.id === chosen.unit_id)?.title, position: chosen.position, curriculum: "HSK 2.0 · six-level vocabulary pathway" };
   }
 
   const { data: units, error: unitError } = await supabase
@@ -120,12 +120,12 @@ async function findCourseLesson(language, level, topic) {
     if (contentError) throw contentError;
     const used = new Set((contents || []).map((row) => row.lesson_id));
     const chosen = (lessons || []).find((lesson) => !used.has(lesson.id));
-    if (chosen) return { lessonId: chosen.id, curriculum: "CEFR-informed guided course" };
+    if (chosen) return { lessonId: chosen.id, unitTitle: unit.title, position: chosen.position, curriculum: "CEFR-informed guided course" };
   }
   throw new Error("All lesson slots for this course are in use. Please choose another topic or level.");
 }
 
-function buildLessonPrompt({ language, nativeLanguage, level, topic, hsk }) {
+function buildLessonPrompt({ language, nativeLanguage, level, topic, hsk, targetWords, grammarFocus }) {
   const system = [
     "You are LinguaApp's expert language-course designer and experienced language teacher.",
     "Create a complete, accurate, teachable lesson for one learner. Return exactly one JSON object and no markdown.",
@@ -136,23 +136,31 @@ function buildLessonPrompt({ language, nativeLanguage, level, topic, hsk }) {
     "Keep all target-language material appropriate for the learner's level. Include translations for all dialogue and reading material.",
     isChinese(language) ? "For Mandarin Chinese, use simplified characters and tone-marked pinyin for every vocabulary item and dialogue line. Explain tones accurately. Keep all content inside the assigned HSK band." : "",
     hsk ? "HSK scope: " + hsk.label + ". Allowed vocabulary pool (prioritise these words): " + hsk.vocabulary.slice(0, 180).join(", ") + ". Grammar range: " + hsk.grammar + ". Do not claim this is an official exam paper." : "",
+    grammarFocus ? "Current grammar focus: " + grammarFocus + ". Teach and practise this clearly." : "",
+    targetWords?.length ? "This lesson must teach these exact assigned HSK words: " + targetWords.join(", ") + ". Include every assigned word as a vocabulary item; do not substitute or omit any." : "",
   ].filter(Boolean).join("\n");
   const user = [
     "Build a complete " + level + " lesson about this topic: " + topic + ".",
     "Return this exact JSON shape:",
     '{"title":"...","objectives":["..."],"vocabulary":[{"term":"target-language word or phrase","pronunciation":"pinyin/transliteration or empty when not needed","meaning":"native-language meaning","example":"natural target-language example","exampleTranslation":"native-language translation"}],"grammar":[{"name":"grammar point","explanation":"clear explanation in native language","pattern":"reusable pattern","examples":[{"target":"target-language example","pronunciation":"pronunciation or empty","translation":"native-language translation"}]}],"dialogue":[{"speaker":"speaker label","text":"target-language line","pronunciation":"pronunciation or empty","translation":"native-language translation"}],"listening":{"instruction":"what to listen for","script":"a natural spoken dialogue or short talk in the target language","questions":[{"question":"question in native language","options":["A","B","C","D"],"answerIndex":0,"explanation":"why this is correct"}]},"reading":{"instruction":"reading strategy","text":"a level-appropriate target-language passage","translation":"natural full translation","questions":[{"question":"question in native language","options":["A","B","C","D"],"answerIndex":0,"explanation":"why this is correct"}]},"speaking":{"prompt":"a realistic open-ended speaking task","usefulPhrases":["..."],"modelAnswer":"a natural model response in target language with translation"},"writing":{"prompt":"a practical writing task","requirements":["..."],"modelAnswer":"a model response in target language with translation"},"review":[{"question":"question in native language","options":["A","B","C","D"],"answerIndex":0,"explanation":"why this is correct"}]}',
-    "Requirements: 8–10 vocabulary items; 2 grammar points with at least 2 examples each; 6–8 dialogue turns; listening script 5–9 sentences; at least 3 listening questions; reading passage 100–180 target-language words at Beginner, 180–280 Intermediate, 250–400 Advanced; at least 3 reading questions; 4 review questions. Vary correct answer positions. No answer may be ambiguous.",
+    targetWords?.length ? "Use exactly the assigned HSK words as the vocabulary list, one item per assigned word." : "Use 8–10 vocabulary items.",
+    "Requirements: 2 grammar points with at least 2 examples each; 6–8 dialogue turns; listening script 5–9 sentences; at least 3 listening questions; reading passage 100–180 target-language words at Beginner, 180–280 Intermediate, 250–400 Advanced; at least 3 reading questions; 4 review questions. Vary correct answer positions. No answer may be ambiguous.",
     "Model answers must be useful but not the only possible correct answers. Keep each section concise enough for a mobile learner.",
   ].join("\n");
   return { system, user };
 }
 
-async function generateLessonContent({ language, nativeLanguage, level, topic, hsk }) {
-  const { system, user } = buildLessonPrompt({ language, nativeLanguage, level, topic, hsk });
+async function generateLessonContent({ language, nativeLanguage, level, topic, hsk, targetWords, grammarFocus }) {
+  const { system, user } = buildLessonPrompt({ language, nativeLanguage, level, topic, hsk, targetWords, grammarFocus });
   const reply = await completeJson([
     { role: "system", content: system }, { role: "user", content: user },
   ], 6500);
-  return validateLesson(parseObject(reply), language, level);
+  const lesson = validateLesson(parseObject(reply), language, level);
+  if (targetWords?.length) {
+    const missing = targetWords.filter((word) => !lesson.vocabulary.some((item) => item.term === word));
+    if (missing.length) throw new Error("The HSK lesson omitted assigned words: " + missing.join(", "));
+  }
+  return lesson;
 }
 
 async function saveVocabulary(userId, language, lessonId, vocabulary) {
@@ -215,13 +223,17 @@ router.post("/lesson", async (req, res) => {
     let slot;
     if (Number.isInteger(requestedLessonId) && requestedLessonId > 0) {
       const { data: selected, error: selectedError } = await supabase.from("lessons")
-        .select("id, units!inner(title, languages!inner(name), levels!inner(name))")
+        .select("id, position, units!inner(title, languages!inner(name), levels!inner(name))")
         .eq("id", requestedLessonId).maybeSingle();
       if (selectedError) throw selectedError;
       if (!selected || selected.units.languages.name !== language || selected.units.levels.name !== level) {
         return res.status(404).json({ error: "That lesson does not belong to this course." });
       }
-      slot = { lessonId: selected.id, curriculum: isChinese(language) ? "HSK 2.0 · six-level vocabulary pathway" : "CEFR-informed guided course" };
+      const unitTitle = selected.units.title;
+      const position = selected.position;
+      const plan = isChinese(language) ? lessonPlan(unitTitle, position, level) : null;
+      slot = { lessonId: selected.id, unitTitle, position, topic: plan?.topic, grammarFocus: plan?.grammar,
+        curriculum: isChinese(language) ? "HSK 2.0 · six-level vocabulary pathway" : "CEFR-informed guided course" };
     } else {
       slot = await findCourseLesson(language, level, topic);
     }
@@ -239,7 +251,12 @@ router.post("/lesson", async (req, res) => {
 
     const nativeLanguage = req.user.nativeLanguage || "English";
     const hsk = isChinese(language) ? scopeFor(level) : null;
-    const lesson = await generateLessonContent({ language, nativeLanguage, level, topic, hsk });
+    const plan = isChinese(language) ? lessonPlan(slot.unitTitle, slot.position, level) : null;
+    const assignedWords = isChinese(language) ? wordsForLesson(slot.unitTitle, slot.position) : null;
+    const lesson = await generateLessonContent({
+      language, nativeLanguage, level, topic: plan?.topic || topic, hsk,
+      targetWords: assignedWords, grammarFocus: plan?.grammar || null,
+    });
     const curriculum = hsk ? "HSK 2.0 · six-level vocabulary pathway" : slot.curriculum;
     const { error: insertError } = await supabase.from("course_lesson_content").upsert({
       lesson_id: slot.lessonId, language, level, topic, title: lesson.title,
