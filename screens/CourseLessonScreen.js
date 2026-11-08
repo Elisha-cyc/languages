@@ -157,6 +157,8 @@ export default function CourseLessonScreen() {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Could not save your practice result.");
+    fetch(API_URL + "/course/progress?language=" + encodeURIComponent(language) + "&level=" + encodeURIComponent(level))
+      .then((r) => r.json()).then(setProgress).catch(() => {});
     return data;
   }
 
@@ -196,6 +198,8 @@ export default function CourseLessonScreen() {
       if (!data.lesson) throw new Error("The lesson response was incomplete.");
       setLesson(data.lesson);
       setLessonId(data.lessonId);
+      fetch(API_URL + "/course/progress?language=" + encodeURIComponent(language) + "&level=" + encodeURIComponent(level))
+        .then((r) => r.json()).then(setProgress).catch(() => {});
     } catch (e) {
       setError(e.message || "Could not prepare the lesson.");
     } finally {
@@ -326,7 +330,7 @@ export default function CourseLessonScreen() {
         ) : null}
         <Text style={styles.label}>What do you want to learn?</Text>
         {TOPICS.map((item) => (
-          <Pressable key={item} onPress={() => setTopic(item)} style={[styles.topic, topic === item && styles.topicOn]}>
+          <Pressable key={item} onPress={() => { setTopic(item); setSelectedLessonId(null); setSelectedUnitId(null); }} style={[styles.topic, topic === item && styles.topicOn]}>
             <Text style={[styles.topicText, topic === item && styles.topicTextOn]}>{item}</Text>
           </Pressable>
         ))}
