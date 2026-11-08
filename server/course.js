@@ -260,17 +260,23 @@ router.post("/lesson", async (req, res) => {
     const hsk = isChinese(language) ? scopeFor(level) : null;
     const plan = isChinese(language) ? lessonPlan(slot.unitTitle, slot.position, level) : null;
     const assignedWords = isChinese(language) ? wordsForLesson(slot.unitTitle, slot.position) : null;
-    const lesson = await generateLessonContent({
+    let lesson = await generateLessonContent({
       language, nativeLanguage, level, topic: plan?.topic || topic, hsk,
       targetWords: assignedWords, grammarFocus: plan?.grammar || null,
     });
     const curriculum = hsk ? "HSK 2.0 · six-level vocabulary pathway" : slot.curriculum;
-    const { error: insertError } = await supabase.from("course_lesson_content").upsert({
+    const { error: insertError } = await supabase.from("course_lesson_content").insert({
       lesson_id: slot.lessonId, language, level, native_language: nativeLanguage,
       topic, title: lesson.title, content: lesson, curriculum_standard: curriculum,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "lesson_id,native_language" });
-    if (insertError) throw insertError;
+    });
+    if (insertError?.code === "23505") {
+      const { data: winningLesson, error: winnerError } = await supabase.from("course_lesson_content")
+        .select("content").eq("lesson_id", slot.lessonId).eq("native_language", nativeLanguage).maybeSingle();
+      if (winnerError || !winningLesson) throw winnerError || insertError;
+      lesson = winningLesson.content;
+    } else if (insertError) {
+      throw insertError;
+    }
     await saveVocabulary(userId, language, slot.lessonId, lesson.vocabulary);
     const { error: enrollmentError } = await supabase.from("course_enrollments").upsert({
       user_id: userId, language, level, status: "active", last_activity_at: new Date().toISOString(),
