@@ -20,6 +20,8 @@ export default function PlacementScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [finished, setFinished] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   async function start() {
     setLoading(true);
@@ -28,6 +30,8 @@ export default function PlacementScreen({ navigation }) {
     setAnswers({});
     setIndex(0);
     setFinished(false);
+    setSaving(false);
+    setSaveError("");
     try {
       const response = await fetch(
         API_URL + "/placement/questions?language=" + encodeURIComponent(language),
@@ -53,9 +57,27 @@ export default function PlacementScreen({ navigation }) {
     setAnswers((old) => ({ ...old, [question.id]: optionIndex }));
   }
 
-  function next() {
-    if (index + 1 < questions.length) setIndex((value) => value + 1);
-    else setFinished(true);
+  async function next() {
+    if (index + 1 < questions.length) {
+      setIndex((value) => value + 1);
+      return;
+    }
+    setSaving(true);
+    setSaveError("");
+    try {
+      const response = await fetch(API_URL + "/placement/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language, level: recommended }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not save your recommended course.");
+      setFinished(true);
+    } catch (e) {
+      setSaveError(e.message || "Could not save your recommended course.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   const results = LEVELS.map((level) => {
@@ -63,9 +85,11 @@ export default function PlacementScreen({ navigation }) {
     const correct = group.filter((item) => answers[item.id] === item.answerIndex).length;
     return { level, total: group.length, correct, ratio: group.length ? correct / group.length : 0 };
   });
-  const recommended =
-    [...results].reverse().find((result) => result.total > 0 && result.ratio >= 0.7)?.level ||
-    "Beginner";
+  let recommended = "Beginner";
+  for (const result of results) {
+    if (result.total >= 3 && result.ratio >= 0.7) recommended = result.level;
+    else break;
+  }
   const answered = Object.keys(answers).length;
 
   return (
@@ -85,6 +109,7 @@ export default function PlacementScreen({ navigation }) {
             title="Target language"
           />
           {error ? <Text style={styles.error}>{error}</Text> : null}
+          {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
           <Pressable style={styles.primary} disabled={loading} onPress={start}>
             {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Start assessment</Text>}
           </Pressable>
@@ -94,7 +119,7 @@ export default function PlacementScreen({ navigation }) {
           <Text style={styles.title}>Your placement result</Text>
           <Text style={styles.level}>{recommended}</Text>
           <Text style={styles.copy}>
-            Based on your answers, we recommend starting at {recommended}. This is a short
+            Based on your answers, we recommend starting at {recommended}. Your course enrollment has been saved. This is a short
             vocabulary diagnostic, not an official CEFR or HSK examination.
           </Text>
           {results.map((result) => (
@@ -146,10 +171,11 @@ export default function PlacementScreen({ navigation }) {
             );
           })}
           {selected !== undefined ? (
-            <Pressable style={styles.primary} onPress={next}>
-              <Text style={styles.primaryText}>{index + 1 === questions.length ? "See my result" : "Next question"}</Text>
+            <Pressable style={styles.primary} disabled={saving} onPress={next}>
+              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{index + 1 === questions.length ? "Save my result" : "Next question"}</Text>}
             </Pressable>
           ) : null}
+          {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
           <Text style={styles.small}>{answered} answered</Text>
         </View>
       )}
