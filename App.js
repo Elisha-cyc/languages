@@ -37,6 +37,7 @@ import { setAudioModeAsync } from "expo-audio";
 import TeacherScreen from "./screens/TeacherScreen";
 import PinyinTeacherScreen from "./screens/PinyinTeacherScreen";
 import CourseLessonScreen from "./screens/CourseLessonScreen";
+import PlacementScreen from "./screens/PlacementScreen";
 import { IntroAnimation, LoadingAnimation } from "./components/AppAnimation";
 
 const Stack = createNativeStackNavigator();
@@ -217,6 +218,11 @@ function Root() {
             name="PinyinTeacher"
             component={PinyinTeacherScreen}
             options={{ title: "Chinese pinyin teacher" }}
+          />
+          <Stack.Screen
+            name="Placement"
+            component={PlacementScreen}
+            options={{ title: "Find your level" }}
           />
           <Stack.Screen
             name="CourseLesson"
