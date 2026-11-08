@@ -343,8 +343,10 @@ router.post("/lesson", async (req, res) => {
     res.json({ lesson, lessonId: slot.lessonId, cached: false, curriculum });
   } catch (error) {
     console.error("Course lesson failed:", String(error.message).slice(0, 300));
-    const busy = /429|rate limit/i.test(String(error.message));
-    res.status(busy ? 429 : 502).json({ error: busy
+    const message = String(error.message || "");
+    const busy = /429|rate limit/i.test(message);
+    const progression = /^(Complete the previous|You have completed the available)/i.test(message);
+    res.status(progression ? 403 : busy ? 429 : 502).json({ error: progression ? message : busy
       ? "The AI teacher is busy. Please try again shortly."
       : "The lesson could not be prepared completely. Please try again." });
   }
