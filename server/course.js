@@ -151,7 +151,9 @@ async function findCourseLesson(language, level, topic, nativeLanguage = "Englis
 
   const ranked = [...units].sort((a, b) =>
     topicMatchesUnit(topic, b.title) - topicMatchesUnit(topic, a.title) || a.position - b.position);
+  const bestTopicScore = topicMatchesUnit(topic, ranked[0]?.title || "");
   for (const unit of ranked) {
+    if (topicMatchesUnit(topic, unit.title) < bestTopicScore) break;
     const { data: lessons, error: lessonError } = await supabase
       .from("lessons").select("id, position").eq("unit_id", unit.id).order("position");
     if (lessonError) throw lessonError;
