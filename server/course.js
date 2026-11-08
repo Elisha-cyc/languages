@@ -238,10 +238,44 @@ async function saveVocabulary(userId, language, lessonId, vocabulary) {
   if (error) throw error;
 }
 
+router.get("/outline", async (req, res) => {
+  const { language, level } = req.query || {};
+  if (!LANGUAGES.includes(language) || !LEVELS.includes(level)) {
+    return res.status(400).json({ error: "Choose a supported language and level." });
+  }
+  try {
+    if (isChinese(language)) await ensureHskCurriculum(supabase);
+    const { data, error } = await supabase.from("units")
+      .select("id, title, position, languages!inner(name), levels!inner(name), lessons(id, title, position, course_lesson_content(lesson_id, title))")
+      .eq("languages.name", language).eq("levels.name", level)
+      .order("position");
+    if (error) throw error;
+    const { data: completed, error: progressError } = await supabase.from("progress")
+      .select("lesson_id").eq("user_id", req.user.id);
+    if (progressError) throw progressError;
+    const done = new Set((completed || []).map((row) => row.lesson_id));
+    const units = (data || []).filter((unit) =>
+      !isChinese(language) || /^HSK [1-6] · Vocabulary \d+$/.test(unit.title)
+    ).map((unit) => ({
+      id: unit.id, title: unit.title, position: unit.position,
+      lessons: (unit.lessons || []).sort((a,b) => a.position-b.position).map((lesson) => ({
+        id: lesson.id, title: lesson.course_lesson_content?.[0]?.title || lesson.title,
+        position: lesson.position, ready: Boolean(lesson.course_lesson_content?.length),
+        completed: done.has(lesson.id),
+      })),
+    }));
+    res.json(units);
+  } catch (error) {
+    console.error("Course outline failed:", error.message);
+    res.status(502).json({ error: "Could not load the course outline." });
+  }
+});
+
 router.post("/lesson", async (req, res) => {
   const userId = req.user?.id;
   const { language, level } = req.body || {};
   const topic = clean(req.body?.topic, 120);
+  const requestedLessonId = Number(req.body?.lessonId);
   if (!userId) return res.status(401).json({ error: "Please log in." });
   if (!LANGUAGES.includes(language)) return res.status(400).json({ error: "Choose a supported learning language." });
   if (!LEVELS.includes(level)) return res.status(400).json({ error: "Choose a course level." });
@@ -249,7 +283,19 @@ router.post("/lesson", async (req, res) => {
   if (!allowed(userId)) return res.status(429).json({ error: "You have reached the lesson-generation limit. Try again later." });
 
   try {
-    const slot = await findCourseLesson(language, level, topic);
+    let slot;
+    if (Number.isInteger(requestedLessonId) && requestedLessonId > 0) {
+      const { data: selected, error: selectedError } = await supabase.from("lessons")
+        .select("id, units!inner(title, languages!inner(name), levels!inner(name))")
+        .eq("id", requestedLessonId).maybeSingle();
+      if (selectedError) throw selectedError;
+      if (!selected || selected.units.languages.name !== language || selected.units.levels.name !== level) {
+        return res.status(404).json({ error: "That lesson does not belong to this course." });
+      }
+      slot = { lessonId: selected.id, curriculum: isChinese(language) ? "HSK 2.0 · six-level vocabulary pathway" : "CEFR-informed guided course" };
+    } else {
+      slot = await findCourseLesson(language, level, topic);
+    }
     const { data: cached, error: cacheError } = await supabase
       .from("course_lesson_content").select("title, content, curriculum_standard")
       .eq("lesson_id", slot.lessonId).maybeSingle();
@@ -266,11 +312,15 @@ router.post("/lesson", async (req, res) => {
     const hsk = isChinese(language) ? scopeFor(level) : null;
     const lesson = await generateLessonContent({ language, nativeLanguage, level, topic, hsk });
     const curriculum = hsk ? "HSK 2.0 · six-level vocabulary pathway" : slot.curriculum;
-    const { error: insertError } = await supabase.from("course_lesson_content").insert({
+    const { error: insertError } = await supabase.from("course_lesson_content").upsert({
       lesson_id: slot.lessonId, language, level, topic, title: lesson.title,
-      content: lesson, curriculum_standard: curriculum,
-    });
-    if (insertError && insertError.code !== "23505") throw insertError;
+      content: lesson, curriculum_standard: curriculum, updated_at: new Date().toISOString(),
+    }, { onConflict: "lesson_id" });
+    if (insertError) throw insertError;
+    const { error: lessonUpdateError } = await supabase.from("lessons")
+      .update({ title: lesson.title, status: "ready", format: "course" })
+      .eq("id", slot.lessonId);
+    if (lessonUpdateError) throw lessonUpdateError;
     await saveVocabulary(userId, language, slot.lessonId, lesson.vocabulary);
     const { error: enrollmentError } = await supabase.from("course_enrollments").upsert({
       user_id: userId, language, level, status: "active", last_activity_at: new Date().toISOString(),
