@@ -75,7 +75,26 @@ function topicMatchesUnit(topic, title) {
   return score;
 }
 
-async function findCourseLesson(language, level, topic, nativeLanguage = "English") {
+async function lessonIsUnlocked(userId, lessonId, language, level) {
+  const { data: units, error: unitsError } = await supabase.from("units")
+    .select("id, position, title, languages!inner(name), levels!inner(name), lessons(id, position)")
+    .eq("languages.name", language).eq("levels.name", level).order("position");
+  if (unitsError) throw unitsError;
+  const ordered = (units || [])
+    .filter((unit) => !isChinese(language) || /^HSK [1-6] · Vocabulary \d+$/.test(unit.title))
+    .sort((a,b) => a.position-b.position)
+    .flatMap((unit) => (unit.lessons || []).sort((a,b) => a.position-b.position).map((lesson) => lesson.id));
+  const index = ordered.indexOf(Number(lessonId));
+  if (index < 0) return false;
+  const { data: completed, error } = await supabase.from("progress")
+    .select("lesson_id").eq("user_id", userId).in("lesson_id", ordered);
+  if (error) throw error;
+  const done = new Set((completed || []).map((row) => row.lesson_id));
+  if (done.has(Number(lessonId))) return true;
+  return ordered.slice(0, index).every((id) => done.has(id));
+}
+
+async function findCourseLesson(language, level, topic, nativeLanguage = "English", userId) {
   if (isChinese(language)) {
     await ensureHskCurriculum(supabase);
     const grades = gradesFor(level);
@@ -94,11 +113,11 @@ async function findCourseLesson(language, level, topic, nativeLanguage = "Englis
       .from("lessons").select("id, unit_id, position").in("unit_id", ids).order("position");
     if (lessonError) throw lessonError;
     const lessonIds = (lessons || []).map((lesson) => lesson.id);
-    const { data: contents, error: contentError } = await supabase
-      .from("course_lesson_content").select("lesson_id").eq("native_language", nativeLanguage).in("lesson_id", lessonIds);
-    if (contentError) throw contentError;
-    const used = new Set((contents || []).map((row) => row.lesson_id));
-    const chosen = (lessons || []).find((lesson) => !used.has(lesson.id));
+    const { data: completed, error: progressError } = await supabase
+      .from("progress").select("lesson_id").eq("user_id", userId).in("lesson_id", lessonIds);
+    if (progressError) throw progressError;
+    const done = new Set((completed || []).map((row) => row.lesson_id));
+    const chosen = (lessons || []).find((lesson) => !done.has(lesson.id));
     if (!chosen) throw new Error("You have reached the available HSK lesson slots. More lessons are being prepared.");
     return { lessonId: chosen.id, unitTitle: gradeUnits.find((unit) => unit.id === chosen.unit_id)?.title, position: chosen.position, curriculum: "HSK 2.0 · six-level vocabulary pathway" };
   }
@@ -117,11 +136,11 @@ async function findCourseLesson(language, level, topic, nativeLanguage = "Englis
     if (lessonError) throw lessonError;
     const lessonIds = (lessons || []).map((lesson) => lesson.id);
     if (!lessonIds.length) continue;
-    const { data: contents, error: contentError } = await supabase
-      .from("course_lesson_content").select("lesson_id").eq("native_language", nativeLanguage).in("lesson_id", lessonIds);
-    if (contentError) throw contentError;
-    const used = new Set((contents || []).map((row) => row.lesson_id));
-    const chosen = (lessons || []).find((lesson) => !used.has(lesson.id));
+    const { data: completed, error: progressError } = await supabase
+      .from("progress").select("lesson_id").eq("user_id", userId).in("lesson_id", lessonIds);
+    if (progressError) throw progressError;
+    const done = new Set((completed || []).map((row) => row.lesson_id));
+    const chosen = (lessons || []).find((lesson) => !done.has(lesson.id));
     if (chosen) return { lessonId: chosen.id, unitTitle: unit.title, position: chosen.position, curriculum: "CEFR-informed guided course" };
   }
   throw new Error("All lesson slots for this course are in use. Please choose another topic or level.");
@@ -241,13 +260,15 @@ router.post("/lesson", async (req, res) => {
           return res.status(404).json({ error: "Choose a lesson from the HSK pathway for this level." });
         }
       }
+      const unlocked = await lessonIsUnlocked(userId, selected.id, language, level);
+      if (!unlocked) return res.status(403).json({ error: "Complete the previous lesson before opening this one." });
       const unitTitle = selected.units.title;
       const position = selected.position;
       const plan = isChinese(language) ? lessonPlan(unitTitle, position, level) : null;
       slot = { lessonId: selected.id, unitTitle, position, topic: plan?.topic, grammarFocus: plan?.grammar,
         curriculum: isChinese(language) ? "HSK 2.0 · six-level vocabulary pathway" : "CEFR-informed guided course" };
     } else {
-      slot = await findCourseLesson(language, level, topic, req.user.nativeLanguage || "English");
+      slot = await findCourseLesson(language, level, topic, req.user.nativeLanguage || "English", userId);
     }
     const nativeLanguage = req.user.nativeLanguage || "English";
     const { data: cached, error: cacheError } = await supabase
