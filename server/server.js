@@ -61,6 +61,7 @@ app.use("/chat", require("./chat"));
 app.use("/hanzi", require("./hanzi"));
 app.use("/speech", require("./speech"));
 app.use("/course", require("./course"));
+app.use("/placement", require("./placement"));
 
 // ---------- Curriculum ----------
 
