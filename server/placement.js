@@ -17,13 +17,16 @@ function shuffle(items) {
 }
 
 function makeQuestions(words, level, usedIds) {
-  const available = shuffle(words.filter((word) => !usedIds.has(word.id)));
+  const available = shuffle(words.filter((word) =>
+    !usedIds.has(word.id) && typeof word.word === "string" && word.word.trim() &&
+    typeof word.meaning === "string" && word.meaning.trim()
+  ));
   const questions = [];
 
   for (const word of available) {
     const wrong = shuffle(
       [...new Set(words
-        .filter((candidate) => candidate.id !== word.id && candidate.meaning !== word.meaning)
+        .filter((candidate) => candidate.id !== word.id && typeof candidate.meaning === "string" && candidate.meaning.trim() && candidate.meaning !== word.meaning)
         .map((candidate) => candidate.meaning))]
     ).slice(0, 3);
 
