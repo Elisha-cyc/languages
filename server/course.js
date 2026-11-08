@@ -212,17 +212,20 @@ router.get("/outline", async (req, res) => {
       .select("lesson_id").eq("user_id", req.user.id);
     if (progressError) throw progressError;
     const done = new Set((completed || []).map((row) => row.lesson_id));
+    let previousLessonsComplete = true;
     const units = (data || []).filter((unit) =>
-      !isChinese(language) || /^HSK [1-6] · Vocabulary \d+$/.test(unit.title)
-    ).map((unit) => ({
+      !isChinese(language) || /^HSK [1-6] · Vocabulary \\d+$/.test(unit.title)
+    ).sort((a,b) => a.position-b.position).map((unit) => ({
       id: unit.id, title: unit.title, position: unit.position,
       lessons: (unit.lessons || []).sort((a,b) => a.position-b.position).map((lesson) => {
         const contents = Array.isArray(lesson.course_lesson_content) ? lesson.course_lesson_content : (lesson.course_lesson_content ? [lesson.course_lesson_content] : []);
         const content = contents.find((item) => item.native_language === (req.user.nativeLanguage || "English"));
+        const completed = done.has(lesson.id);
+        const locked = !previousLessonsComplete && !completed;
+        previousLessonsComplete = previousLessonsComplete && completed;
         return {
           id: lesson.id, title: content?.title || lesson.title,
-          position: lesson.position, ready: Boolean(content),
-          completed: done.has(lesson.id),
+          position: lesson.position, ready: Boolean(content), completed, locked,
         };
       }),
     }));
