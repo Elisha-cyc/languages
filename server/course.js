@@ -7,7 +7,7 @@ const supabase = require("./supabase");
 const { LANGUAGES } = require("./curriculum");
 const { isChinese, scopeFor, gradesFor, wordsForLesson, lessonPlan } = require("./hsk");
 const { ensureHskCurriculum } = require("./ensure-hsk-curriculum");
-const { validateLesson, parseObject } = require("./course-validation");
+const { validateLesson, parseObject, isSequentiallyUnlocked } = require("./course-validation");
 
 const router = express.Router();
 const LEVELS = ["Beginner", "Intermediate", "Advanced"];
@@ -102,14 +102,10 @@ async function lessonIsUnlocked(userId, lessonId, language, level) {
   const ordered = orderedUnits.flatMap((unit) =>
     (unit.lessons || []).sort((a,b) => a.position-b.position).map((lesson) => lesson.id)
   );
-  const index = ordered.indexOf(Number(lessonId));
-  if (index < 0) return false;
   const { data: completed, error } = await supabase.from("progress")
     .select("lesson_id").eq("user_id", userId).in("lesson_id", ordered);
   if (error) throw error;
-  const done = new Set((completed || []).map((row) => row.lesson_id));
-  if (done.has(Number(lessonId))) return true;
-  return ordered.slice(0, index).every((id) => done.has(id));
+  return isSequentiallyUnlocked(ordered, (completed || []).map((row) => row.lesson_id), lessonId);
 }
 
 async function findCourseLesson(language, level, topic, nativeLanguage = "English", userId) {
