@@ -1,6 +1,7 @@
 "use strict";
 
 const express = require("express");
+const crypto = require("node:crypto");
 const { completeJson } = require("./aijson");
 const supabase = require("./supabase");
 const { LANGUAGES } = require("./curriculum");
@@ -12,6 +13,7 @@ const router = express.Router();
 const LEVELS = ["Beginner", "Intermediate", "Advanced"];
 const SKILLS = ["listening", "reading", "speaking", "writing", "review"];
 const requests = new Map();
+const conversationRequests = new Map();
 
 function allowed(userId) {
   const now = Date.now();
@@ -440,6 +442,93 @@ router.post("/review", async (req, res) => {
   } catch (error) {
     console.error("Vocabulary review failed:", String(error.message).slice(0, 200));
     res.status(502).json({ error: "Could not save that vocabulary review." });
+  }
+});
+
+router.post("/conversation", async (req, res) => {
+  const userId = req.user?.id;
+  const { language, level } = req.body || {};
+  const message = clean(req.body?.message, 600);
+  const history = Array.isArray(req.body?.history) ? req.body.history.slice(-10) : [];
+  const recent = (conversationRequests.get(userId) || []).filter((time) => Date.now() - time < 3600000);
+  if (!userId) return res.status(401).json({ error: "Please log in." });
+  if (!LANGUAGES.includes(language) || !LEVELS.includes(level)) {
+    return res.status(400).json({ error: "Choose a supported language and level." });
+  }
+  if (message.length < 2) return res.status(400).json({ error: "Say or type something first." });
+  if (recent.length >= 40) return res.status(429).json({ error: "Conversation practice limit reached for this hour." });
+  recent.push(Date.now());
+  conversationRequests.set(userId, recent);
+
+  const safeHistory = history.map((item) => ({
+    role: item?.role === "assistant" ? "assistant" : "user",
+    content: clean(item?.content, 600),
+  })).filter((item) => item.content);
+  const nativeLanguage = req.user.nativeLanguage || "English";
+  const hsk = isChinese(language) ? scopeFor(level) : null;
+  const system = [
+    "You are LinguaApp's friendly, realistic conversation partner and language coach.",
+    "Hold a natural conversation in " + language + " with a " + level + " learner. Respond to what they actually said; do not give a generic lesson.",
+    "Use language that is appropriate to their level. Encourage longer, more independent replies over time.",
+    "Explain in " + nativeLanguage + ". Keep your main reply in the target language.",
+    "Correct at most one important mistake at a time. Be kind and briefly explain why the correction is better.",
+    "Never claim to assess accent, tones or pronunciation from a text transcript. The transcript is not acoustic evidence.",
+    hsk ? "This is " + hsk.label + " Mandarin Chinese. Stay within this HSK vocabulary and grammar range: " + hsk.grammar + ". Add tone-marked pinyin to your reply." : "",
+    'Return JSON only: {"reply":"natural target-language response","translation":"native-language translation","correction":"one concise correction or empty string","score":0,"strengths":["..."],"nextQuestion":"a natural follow-up question in target language","vocabulary":[{"term":"...","meaning":"..."}]}.',
+    "Score 0-100 is a formative estimate of the learner's written/transcribed language accuracy, vocabulary and communicative success. It is not a pronunciation score or official proficiency result.",
+  ].filter(Boolean).join("\n");
+  const transcript = safeHistory.map((item) => (item.role === "user" ? "Learner: " : "Partner: ") + item.content).join("\n");
+  const user = "<conversation_history>\n" + transcript + "\n</conversation_history>\n<learner_message>\n" + message + "\n</learner_message>\nRespond naturally and ask one useful follow-up question.";
+  try {
+    const reply = await completeJson([
+      { role: "system", content: system }, { role: "user", content: user },
+    ], 1800);
+    const raw = parseObject(reply);
+    const score = Number(raw.score);
+    const result = {
+      reply: clean(raw.reply, 700),
+      translation: clean(raw.translation, 700),
+      correction: clean(raw.correction, 500),
+      score: Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : null,
+      strengths: stringArray(raw.strengths, 0, 3, 180),
+      nextQuestion: clean(raw.nextQuestion, 400),
+      vocabulary: (Array.isArray(raw.vocabulary) ? raw.vocabulary : []).slice(0, 3).map((item) => ({
+        term: clean(item?.term, 80), meaning: clean(item?.meaning, 160),
+      })).filter((item) => item.term && item.meaning),
+    };
+    if (!result.reply || !result.translation || result.score === null) {
+      throw new Error("The conversation response was incomplete.");
+    }
+    const suppliedId = clean(req.body?.conversationId, 40);
+    const conversationId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(suppliedId)
+      ? suppliedId : crypto.randomUUID();
+    const { error: saveError } = await supabase.from("course_conversation_turns").insert({
+      conversation_id: conversationId, user_id: userId, language, level,
+      user_message: message, assistant_message: result.reply,
+      translation: result.translation, correction: result.correction,
+      score: result.score, feedback: { strengths: result.strengths, vocabulary: result.vocabulary },
+    });
+    if (saveError) throw saveError;
+
+    const { data: old } = await supabase.from("course_skill_progress").select("*")
+      .eq("user_id", userId).eq("language", language).eq("level", level)
+      .eq("skill", "speaking").maybeSingle();
+    const now = new Date().toISOString();
+    const { error: skillError } = await supabase.from("course_skill_progress").upsert({
+      user_id: userId, language, level, skill: "speaking",
+      attempts: (old?.attempts || 0) + 1,
+      total_score: (old?.total_score || 0) + result.score,
+      best_score: Math.max(old?.best_score || 0, result.score),
+      last_score: result.score, last_practiced_at: now, updated_at: now,
+    }, { onConflict: "user_id,language,level,skill" });
+    if (skillError) throw skillError;
+    res.json({ ...result, conversationId });
+  } catch (error) {
+    console.error("Conversation turn failed:", String(error.message).slice(0, 250));
+    const busy = /429|rate limit/i.test(String(error.message));
+    res.status(busy ? 429 : 502).json({ error: busy
+      ? "The conversation partner is busy. Try again shortly."
+      : "The conversation reply could not be prepared. Please try again." });
   }
 });
 
