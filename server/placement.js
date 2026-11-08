@@ -129,6 +129,36 @@ router.get("/questions", async (req, res) => {
   }
 });
 
+router.post("/complete", async (req, res) => {
+  const userId = req.user?.id;
+  const { language, level } = req.body || {};
+  if (!userId || !LANGUAGES.includes(language) || !LEVELS.includes(level)) {
+    return res.status(400).json({ error: "A valid language and recommended level are required." });
+  }
+
+  try {
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from("course_enrollments")
+      .upsert({
+        user_id: userId,
+        language,
+        level,
+        status: "active",
+        last_activity_at: now,
+        updated_at: now,
+      }, { onConflict: "user_id,language,level" })
+      .select("user_id, language, level, status, started_at, last_activity_at")
+      .single();
+
+    if (error) throw error;
+    return res.json({ enrollment: data });
+  } catch (error) {
+    console.error("Placement enrollment failed:", error.message);
+    return res.status(502).json({ error: "Your recommended course could not be saved. Please try again." });
+  }
+});
+
 module.exports = router;
 module.exports.buildPlacementQuestions = buildPlacementQuestions;
 module.exports.makeQuestions = makeQuestions;
