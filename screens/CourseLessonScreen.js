@@ -374,7 +374,7 @@ export default function CourseLessonScreen() {
           <Text style={styles.secondaryText}>Play slowly</Text>
         </Pressable>
         <Text style={styles.body}>{lesson.listening.script}</Text>
-        <QuestionSet title="Listening" questions={lesson.listening.questions} answers={answers} setAnswers={setAnswers} checked={checked} setChecked={setChecked} onComplete={(score,total) => recordAttempt("listening", lesson.listening.instruction, { answers, questions: lesson.listening.questions }, Math.round(score / total * 100))} />
+        <QuestionSet title="Listening" questions={lesson.listening.questions} answers={answers} setAnswers={setAnswers} checked={checked} setChecked={setChecked} onComplete={(score,total) => recordAttempt("listening", lesson.listening.instruction, { answers, questions: lesson.listening.questions }, Math.round(score / total * 100)).catch((e) => setError(e.message))} />
       </Section>
 
       <Section title="Reading comprehension" subtitle={lesson.reading.instruction}>
