@@ -85,7 +85,7 @@ async function generateLevelQuestions(language, nativeLanguage, level) {
         "You are an expert language assessment designer.",
         "Create five accurate multiple-choice vocabulary questions for a language placement diagnostic.",
         "Return one JSON object only. Every question must have exactly four distinct options and one unambiguous correct answer.",
-        "The prompt and options must be in the target language and the meanings/options must be in the learner's explanation language.",
+        "Write the prompt in the target language and the answer options in the learner's explanation language.",
         "For Mandarin Chinese include simplified characters and tone-marked pinyin in pronunciation.",
         "Do not use obscure, regional, archaic or disputed translations.",
       ].join("\\n"),
