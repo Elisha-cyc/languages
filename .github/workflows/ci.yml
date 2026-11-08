@@ -1,0 +1,36 @@
+name: LinguaApp CI
+
+on:
+  push:
+    branches: [main, complete-hsk-course-lessons]
+  pull_request:
+    branches: [main]
+
+jobs:
+  app-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx expo export --platform web
+
+  server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: node --check course.js
+      - run: node --check server.js
