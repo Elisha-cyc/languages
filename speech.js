@@ -357,7 +357,10 @@ async function fetchCloudAudio(text, language, rate) {
 async function prepareNativeCloudAudio(text, language, rate) {
   const res = await fetch(`${API_URL}/tts/url`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${getAuthToken()}`,
+    },
     body: JSON.stringify({ text, language, rate }),
   });
   if (res.status === 501) {
