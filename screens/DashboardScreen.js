@@ -11,6 +11,12 @@ export default function DashboardScreen({ navigation }) {
       <Text style={styles.sub}>What would you like to do today?</Text>
 
       <Tile
+        icon="📈"
+        title="My learning progress"
+        text="Track completed lessons, skill scores and vocabulary reviews"
+        onPress={() => navigation.navigate("Progress")}
+      />
+      <Tile
         icon="📚"
         title="Follow the curriculum"
         text="Lessons for all 20 languages"
