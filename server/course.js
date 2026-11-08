@@ -118,7 +118,7 @@ async function findCourseLesson(language, level, topic, nativeLanguage = "Englis
     const lessonIds = (lessons || []).map((lesson) => lesson.id);
     if (!lessonIds.length) continue;
     const { data: contents, error: contentError } = await supabase
-      .from("course_lesson_content").select("lesson_id").in("lesson_id", lessonIds);
+      .from("course_lesson_content").select("lesson_id").eq("native_language", nativeLanguage).in("lesson_id", lessonIds);
     if (contentError) throw contentError;
     const used = new Set((contents || []).map((row) => row.lesson_id));
     const chosen = (lessons || []).find((lesson) => !used.has(lesson.id));
