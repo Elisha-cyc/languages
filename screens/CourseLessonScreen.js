@@ -313,9 +313,9 @@ export default function CourseLessonScreen() {
                 <Text style={styles.muted}>{unit.lessons.filter((item) => item.completed).length} of {unit.lessons.length} lessons completed</Text>
               </Pressable>
               {selectedUnitId === unit.id ? unit.lessons.map((item) => (
-                <Pressable key={item.id} style={[styles.topic, selectedLessonId === item.id && styles.topicOn]} onPress={() => { setSelectedLessonId(item.id); setTopic(unit.title); }}>
-                  <Text style={styles.topicText}>{item.completed ? "✓ " : ""}{item.title}</Text>
-                  <Text style={styles.muted}>{item.ready ? "Lesson content ready" : "New lesson · prepared when opened"}</Text>
+                <Pressable key={item.id} disabled={item.locked} style={[styles.topic, selectedLessonId === item.id && styles.topicOn, item.locked && styles.disabled]} onPress={() => { setSelectedLessonId(item.id); setTopic(unit.title); }}>
+                  <Text style={styles.topicText}>{item.completed ? "✓ " : item.locked ? "🔒 " : ""}{item.title}</Text>
+                  <Text style={styles.muted}>{item.locked ? "Complete the previous lesson to unlock" : item.ready ? "Lesson content ready" : "New lesson · prepared when opened"}</Text>
                 </Pressable>
               )) : null}
             </View>
