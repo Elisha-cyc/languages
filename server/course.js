@@ -200,3 +200,5 @@ router.post("/feedback", async (req, res) => {
 });
 
 module.exports = router;
+module.exports.validateLesson = validateLesson;
+module.exports.parseObject = parseObject;
