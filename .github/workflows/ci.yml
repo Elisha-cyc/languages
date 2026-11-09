@@ -2,7 +2,7 @@ name: LinguaApp CI
 
 on:
   push:
-    branches: [main, complete-hsk-course-lessons, finish-placement-assessment]
+    branches: [main, complete-hsk-course-lessons, finish-placement-assessment, production-hardening]
   pull_request:
     branches: [main]
 
