@@ -40,3 +40,35 @@ test("Chinese conversation coach stays within the supplied HSK scope", () => {
   assert.match(prompt, /Basic word order and 是/);
   assert.match(prompt, /Keep teaching vocabulary, grammar and corrections inside this HSK band/);
 });
+
+test("adaptive conversation level waits for repeated evidence", () => {
+  const prompt = chatSystemPrompt({
+    language: "Mandarin Chinese",
+    nativeLanguage: "English",
+    level: "Beginner",
+    cefr: "A1",
+    topic: "Free chat",
+    levelMode: "adaptive",
+    learnerMessageCount: 2,
+    hskScope: { label: "HSK 1", grammar: "Basic word order" },
+  });
+
+  assert.match(prompt, /Adaptive level is enabled/);
+  assert.match(prompt, /Require at least 3 learner messages/);
+  assert.match(prompt, /Do not promote based on one memorized phrase/);
+  assert.match(prompt, /estimatedLevel/);
+});
+
+test("fixed conversation level cannot be automatically changed", () => {
+  const prompt = chatSystemPrompt({
+    language: "French",
+    nativeLanguage: "English",
+    level: "Intermediate",
+    cefr: "B1",
+    topic: "Free chat",
+    levelMode: "fixed",
+  });
+
+  assert.match(prompt, /Level is fixed by the learner/);
+  assert.match(prompt, /estimatedLevel must be null/);
+});

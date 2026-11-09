@@ -37,7 +37,7 @@ function underLimit(userId) {
 }
 
 router.post("/message", async (req, res) => {
-  const { user_id, language, level, topic, nativeLanguage, history } =
+  const { user_id, language, level, levelMode = "fixed", topic, nativeLanguage, history } =
     req.body || {};
 
   if (!Number.isInteger(user_id)) {
@@ -51,6 +51,9 @@ router.post("/message", async (req, res) => {
   }
 
   const levelInfo = LEVELS.find((item) => item.name === level);
+  if (!["fixed", "adaptive"].includes(levelMode)) {
+    return res.status(400).json({ error: "levelMode must be fixed or adaptive" });
+  }
 
   if (!levelInfo) {
     return res.status(400).json({
@@ -133,9 +136,10 @@ router.post("/message", async (req, res) => {
       pronunciationGuide: PRONUNCIATION_GUIDE[language],
       hskScope: chinese ? scopeFor(level) : null,
       topicDescription: topics[topic],
+      levelMode,
     });
 
-    res.json({ ...result, persona: PERSONAS[language] || "Alex" });
+    res.json({ ...result, levelMode, persona: PERSONAS[language] || "Alex" });
   } catch (err) {
     console.error("Chat error:", err.message);
 
