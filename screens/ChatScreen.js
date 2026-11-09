@@ -238,14 +238,27 @@ export default function ChatScreen() {
   }
 
   // Repeat an assistant message aloud, and compare what was heard
+  async function replayCorrectPronunciation(message, slow = true) {
+    stopSpeaking();
+    const outcome = await speak(message.text, language, {
+      rate: slow ? 0.75 : 1,
+    });
+    if (!outcome.ok) setError(outcome.reason || "Could not play the model pronunciation.");
+  }
+
   function practice(message) {
     begin(message.id, (heard) => {
       const result = compareSpeech(message.text, heard, language);
       setMessages((current) =>
         current.map((m) =>
-          m.id === message.id ? { ...m, practice: { heard, ...result } } : m,
+          m.id === message.id
+            ? { ...m, practice: { heard, ...result, replayed: result.score < 100 } }
+            : m,
         ),
       );
+      // If the recognizer did not hear the full target, immediately model the
+      // complete correct phrase at a slower pace for the learner to imitate.
+      if (result.score < 100) replayCorrectPronunciation(message, true);
     });
   }
 
@@ -537,12 +550,34 @@ export default function ChatScreen() {
                   </Text>
                   {message.practice.missed.length > 0 && (
                     <Text style={styles.practiceLine}>
-                      Not heard: {message.practice.missed.join(", ")}
+                      Not clearly recognized: {message.practice.missed.join(", ")}
                     </Text>
                   )}
+                  {message.practice.score < 100 && (
+                    <View style={styles.practiceActions}>
+                      <Text style={styles.practiceLine}>
+                        Listen to the correct version, then try saying it again.
+                      </Text>
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => replayCorrectPronunciation(message, true)}
+                        style={styles.replayButton}
+                      >
+                        <Text style={styles.replayButtonText}>▶ Hear correct pronunciation slowly</Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => replayCorrectPronunciation(message, false)}
+                        style={styles.replayButton}
+                      >
+                        <Text style={styles.replayButtonText}>▶ Hear at normal speed</Text>
+                      </Pressable>
+                    </View>
+                  )}
                   <Text style={styles.practiceNote}>
-                    This shows whether the speech recognizer understood you. It
-                    does not judge how native you sound.
+                    This score measures word recognition, not pronunciation quality.
+                    It cannot reliably detect Mandarin tone errors yet. The replay
+                    lets you hear the correct model pronunciation to imitate.
                   </Text>
                 </View>
               )}
@@ -775,6 +810,15 @@ const styles = StyleSheet.create({
     maxWidth: "90%",
   },
   practiceLine: { fontSize: 14, lineHeight: 20 },
+  practiceActions: { marginTop: 8, gap: 6 },
+  replayButton: {
+    alignSelf: "flex-start",
+    backgroundColor: "#dbe7ff",
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  replayButtonText: { color: "#2059a8", fontSize: 13, fontWeight: "600" },
   practiceNote: { fontSize: 12, color: "#666", marginTop: 6, lineHeight: 17 },
   typing: { color: "#666", marginTop: 4 },
 
