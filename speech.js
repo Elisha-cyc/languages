@@ -1,6 +1,7 @@
 import * as Speech from "expo-speech";
 import { createAudioPlayer } from "expo-audio";
 import { AppState, Platform } from "react-native";
+import { setAudioModeAsync } from "expo-audio";
 import { API_URL } from "./config";
 import { getAuthToken } from "./auth";
 
@@ -563,6 +564,20 @@ export async function speak(text, language, options = {}) {
   const myRun = ++run;
   Speech.stop();
   stopCloud();
+
+  // Leave recording mode before playing lesson audio. On iOS, play-and-record
+  // can route sound to the receiver; playback mode restores normal media routing.
+  if (Platform.OS !== "web") {
+    try {
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false,
+      });
+    } catch (e) {
+      // Continue with device speech fallback if the platform rejects the mode.
+    }
+  }
 
   const cleaned = cleanForSpeech(text, language);
   const voice = await findVoice(code);
