@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { API_URL, USER_ID, NATIVE_LANGUAGE } from "../config";
-import { speak, stopSpeaking } from "../speech";
+import { speak, stopSpeaking, languageCode } from "../speech";
 import { compareSpeech } from "../listen";
 import LanguagePicker from "../components/LanguagePicker";
 import { useVoice } from "../voice";
@@ -687,6 +687,8 @@ export default function ChatScreen() {
           )}
           <TextInput
             style={styles.textInput}
+            lang={languageCode(language) || "en"}
+            accessibilityLabel={`Write your message in ${language}`}
             value={input}
             onChangeText={setInput}
             placeholder={`Write in ${language}...`}
