@@ -4,6 +4,8 @@ import {
   Text,
   View,
   Pressable,
+  Animated,
+  Easing,
   TextInput,
   ScrollView,
   KeyboardAvoidingView,
@@ -64,6 +66,34 @@ export default function ChatScreen() {
   const messagesRef = useRef([]);
   const voice = useVoice(language);
   const voiceInput = voice.available;
+
+  const orbPulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (phase !== "chat" || mode !== "voice") {
+      orbPulse.setValue(0);
+      return undefined;
+    }
+    const duration = listening === "talk" ? 720 : loading ? 950 : 1900;
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(orbPulse, {
+          toValue: 1,
+          duration,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(orbPulse, {
+          toValue: 0,
+          duration,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [phase, mode, listening, loading, orbPulse]);
 
   messagesRef.current = messages;
 
@@ -515,28 +545,64 @@ export default function ChatScreen() {
       </ScrollView>
 
       {mode === "voice" && voiceInput ? (
-        <View style={styles.voiceBar}>
+        <View style={styles.voiceStage}>
+          <Text style={styles.voiceEyebrow}>LINGUA VOICE</Text>
+          <Text style={styles.voicePrompt}>
+            {listening === "talk"
+              ? voice.state === "working"
+                ? "I'm listening to your words"
+                : "Go ahead, I'm listening"
+              : loading
+                ? "Your tutor is thinking"
+                : "Speak naturally"}
+          </Text>
           <Pressable
-            style={[
-              styles.talk,
-              listening === "talk" && styles.talkOn,
-              loading && styles.disabled,
-            ]}
+            accessibilityRole="button"
+            accessibilityLabel={listening === "talk" ? "Stop listening" : "Start speaking"}
+            style={styles.orbTouch}
             disabled={loading}
             onPress={talk}
           >
-            <Text style={styles.talkText}>
-              {listening === "talk"
-                ? voice.state === "working"
-                  ? "Understanding..."
-                  : Platform.OS === "web"
-                    ? "Listening... speak now"
-                    : "Listening... tap to stop"
-                : loading
-                  ? "..."
-                  : "🎤 Tap and speak"}
-            </Text>
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.orbHalo,
+                {
+                  opacity: orbPulse.interpolate({ inputRange: [0, 1], outputRange: [0.24, 0.72] }),
+                  transform: [{ scale: orbPulse.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.22] }) }],
+                },
+              ]}
+            />
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.orbCore,
+                {
+                  transform: [{ scale: orbPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.055] }) }],
+                },
+              ]}
+            >
+              <View style={styles.orbInner}>
+                <Text style={styles.orbSpark}>✦</Text>
+                <Text style={styles.orbMic}>◖</Text>
+              </View>
+            </Animated.View>
           </Pressable>
+          <Text style={styles.voiceHint}>
+            {listening === "talk"
+              ? Platform.OS === "web" ? "Tap the light to stop" : "Tap the light when you're finished"
+              : loading ? "Preparing your response…" : "Tap the light and start talking"}
+          </Text>
+          <View style={styles.voiceControls}>
+            <Pressable style={styles.voiceControl} onPress={reset}>
+              <Text style={styles.voiceControlIcon}>×</Text>
+              <Text style={styles.voiceControlLabel}>End</Text>
+            </Pressable>
+            <Pressable style={[styles.voiceControl, styles.voiceControlActive]} onPress={switchMode}>
+              <Text style={styles.voiceControlIcon}>⌨</Text>
+              <Text style={styles.voiceControlLabel}>Text</Text>
+            </Pressable>
+          </View>
         </View>
       ) : (
         <View style={styles.inputBar}>
@@ -729,18 +795,114 @@ const styles = StyleSheet.create({
   },
   sendText: { color: "white", fontSize: 16 },
 
-  voiceBar: {
-    padding: 12,
-    backgroundColor: "white",
-    borderTopWidth: 1,
-    borderTopColor: "#d5d9e0",
-  },
-  talk: {
-    backgroundColor: "#2a6fdb",
-    borderRadius: 30,
-    paddingVertical: 18,
+  voiceStage: {
     alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 20,
+    paddingBottom: 18,
+    paddingHorizontal: 20,
+    backgroundColor: "#071426",
+    borderTopWidth: 1,
+    borderTopColor: "#19334f",
   },
-  talkOn: { backgroundColor: "#d9534f" },
-  talkText: { color: "white", fontSize: 18 },
+  voiceEyebrow: {
+    color: "#85b9e8",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 2.6,
+  },
+  voicePrompt: {
+    color: "#f4f8ff",
+    fontSize: 19,
+    fontWeight: "700",
+    marginTop: 9,
+    marginBottom: 2,
+    textAlign: "center",
+  },
+  orbTouch: {
+    width: 190,
+    height: 190,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+    marginBottom: 5,
+  },
+  orbHalo: {
+    position: "absolute",
+    width: 166,
+    height: 166,
+    borderRadius: 83,
+    backgroundColor: "#4bbcff",
+    shadowColor: "#4bbcff",
+    shadowOpacity: 0.95,
+    shadowRadius: 34,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 18,
+  },
+  orbCore: {
+    width: 132,
+    height: 132,
+    borderRadius: 66,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#eafaff",
+    borderWidth: 2,
+    borderColor: "#b9f1ff",
+    shadowColor: "#65d8ff",
+    shadowOpacity: 0.95,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 20,
+  },
+  orbInner: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    backgroundColor: "#83dfff",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#fff",
+  },
+  orbSpark: {
+    color: "#06375b",
+    fontSize: 29,
+    fontWeight: "900",
+    marginBottom: -3,
+  },
+  orbMic: {
+    color: "#06375b",
+    fontSize: 31,
+    fontWeight: "800",
+    transform: [{ rotate: "90deg" }],
+  },
+  voiceHint: {
+    color: "#a9bfd5",
+    fontSize: 12,
+    marginTop: 4,
+    textAlign: "center",
+  },
+  voiceControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 13,
+    gap: 30,
+  },
+  voiceControl: {
+    width: 62,
+    height: 58,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#172c45",
+    borderWidth: 1,
+    borderColor: "#294765",
+  },
+  voiceControlActive: {
+    backgroundColor: "#e6f8ff",
+    borderColor: "#9fe7ff",
+  },
+  voiceControlIcon: { color: "#f4f8ff", fontSize: 22, lineHeight: 25 },
+  voiceControlLabel: { color: "#b9cde0", fontSize: 10, marginTop: 2, fontWeight: "700" },
 });
