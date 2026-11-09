@@ -187,7 +187,7 @@ jobs:
       - name: Verify server-only public schema access and foreign-key indexes
         run: |
           psql --set ON_ERROR_STOP=1 <<'SQL'
-          DO $
+          DO $verify$
           DECLARE
             v_table record;
             v_object text;
