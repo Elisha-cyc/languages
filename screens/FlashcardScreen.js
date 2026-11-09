@@ -10,7 +10,8 @@ import {
 } from "react-native";
 import { Message } from "../components/ChoiceList";
 import { useFetch } from "../useFetch";
-import { speak, stopSpeaking } from "../speech";
+import { speak, speakAndWait, stopSpeaking } from "../speech";
+import { TargetLanguageKeyboard } from "../components/TargetLanguageKeyboard";
 import { API_URL } from "../config";
 import { useVoice } from "../voice";
 import { useQuietOnLeave } from "../useQuietOnLeave";
@@ -44,6 +45,7 @@ export default function FlashcardScreen({ navigation, route }) {
   const [problem, setProblem] = useState(null);
   const [writingAnswer, setWritingAnswer] = useState("");
   const [showWritingModel, setShowWritingModel] = useState(false);
+  const [missingPlayback, setMissingPlayback] = useState("");
 
   // Stop any speech or recording when the user leaves this screen
   useQuietOnLeave(() => {
@@ -84,6 +86,7 @@ export default function FlashcardScreen({ navigation, route }) {
     setProblem(null);
     setWritingAnswer("");
     setShowWritingModel(false);
+    setMissingPlayback("");
     setIndex(index + 1);
   }
 
@@ -106,8 +109,11 @@ export default function FlashcardScreen({ navigation, route }) {
             const missedText = data.missed.join(
               ["Mandarin Chinese", "Japanese", "Thai"].includes(language) ? "" : " ",
             );
-            const playback = await speak(missedText, language, { rate: 0.75 });
-            if (!playback.ok) setProblem(playback.reason || "Could not play the missed words.");
+            setMissingPlayback("Playing the parts you missed…");
+            await speakAndWait(missedText, language, { rate: 0.72 });
+            setMissingPlayback("Finished playing the missed parts. Listen again if needed.");
+          } else {
+            setMissingPlayback("Great — no missing words were detected.");
           }
         } catch (e) {
           setProblem(e.message);
@@ -217,14 +223,19 @@ export default function FlashcardScreen({ navigation, route }) {
                   </Text>
                   <Pressable
                     style={styles.replayMissing}
-                    onPress={() => speak(
-                      result.missed.join(["Mandarin Chinese", "Japanese", "Thai"].includes(language) ? "" : " "),
-                      language,
-                      { rate: 0.75 },
-                    )}
+                    onPress={async () => {
+                      setMissingPlayback("Playing the parts you missed…");
+                      await speakAndWait(
+                        result.missed.join(["Mandarin Chinese", "Japanese", "Thai"].includes(language) ? "" : " "),
+                        language,
+                        { rate: 0.72 },
+                      );
+                      setMissingPlayback("Finished playing the missed parts.");
+                    }}
                   >
-                    <Text style={styles.replayMissingText}>🔊 Hear the missed words slowly</Text>
+                    <Text style={styles.replayMissingText}>🔊 Play missed words slowly</Text>
                   </Pressable>
+                  {!!missingPlayback && <Text style={styles.note}>{missingPlayback}</Text>}
                 </>
               )}
               {result.tip && <Text style={styles.tip}>{result.tip}</Text>}
@@ -255,20 +266,14 @@ export default function FlashcardScreen({ navigation, route }) {
             accessibilityLabel={`Write the ${language} text from its meaning`}
             style={styles.writingInput}
             value={writingAnswer}
-            onChangeText={setWritingAnswer}
-            placeholder={`Type in ${language} here`}
+            editable={false}
+            showSoftInputOnFocus={false}
+            placeholder="Use the in-app keyboard below"
             lang={getInputLanguageTag(language)}
-            keyboardType="default"
-            autoCorrect={false}
-            spellCheck={false}
             multiline
             textAlignVertical="top"
           />
-          <Text style={styles.keyboardHint}>
-            Keyboard language: {language}. If your device keeps showing another
-            layout, add {language} in your phone's keyboard settings and switch
-            to it while typing.
-          </Text>
+          <TargetLanguageKeyboard language={language} value={writingAnswer} onChange={setWritingAnswer} />
           <Pressable style={styles.reveal} onPress={() => setShowWritingModel((visible) => !visible)}>
             <Text style={styles.revealText}>{showWritingModel ? "Hide model" : "Compare with model"}</Text>
           </Pressable>
