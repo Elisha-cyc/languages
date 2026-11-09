@@ -719,12 +719,29 @@ async function chatReply({
 
   // Ask Groq for structured JSON so the app can reliably separate the
   // spoken reply, translation, and teaching feedback.
-  const raw = await complete(
-    messages,
-    2000,
-    process.env.TUTOR_MODEL || MODEL,
-    { response_format: { type: "json_object" } },
-  );
+  let raw;
+
+  try {
+    raw = await complete(
+      messages,
+      2000,
+      process.env.TUTOR_MODEL || MODEL,
+      { response_format: { type: "json_object" } },
+    );
+  } catch (error) {
+    // Some compatible OpenAI-style providers/models do not implement JSON mode.
+    // Retry once without that option; the parser and required-field checks below
+    // still enforce the response contract.
+    const message = String(error.message);
+    if (!(/\b400\b/.test(message) && /response_format|json/i.test(message))) {
+      throw error;
+    }
+    raw = await complete(
+      messages,
+      2000,
+      process.env.TUTOR_MODEL || MODEL,
+    );
+  }
 
   const data = parseJsonObject(raw);
   const reply = cleanField(data.reply, 500);
