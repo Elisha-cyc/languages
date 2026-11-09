@@ -8,7 +8,7 @@ import {
   ScrollView,
 } from "react-native";
 import { API_URL, NATIVE_LANGUAGE, USER_ID } from "../config";
-import { speak, stopSpeaking } from "../speech";
+import { speak, stopSpeaking, languageCode } from "../speech";
 import { splitIntoParts } from "../chunks";
 import LanguagePicker from "../components/LanguagePicker";
 
@@ -158,6 +158,8 @@ export default function TutorScreen({ navigation, route }) {
       <Text style={styles.label}>Text</Text>
       <TextInput
         style={[styles.input, styles.textArea]}
+        lang={languageCode(language) || "en"}
+        accessibilityLabel={`Enter text in ${language}`}
         value={text}
         onChangeText={setText}
         multiline
