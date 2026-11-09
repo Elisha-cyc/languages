@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { API_URL, USER_ID, NATIVE_LANGUAGE } from "../config";
-import { speak, stopSpeaking } from "../speech";
+import { speak, stopSpeaking, languageCode } from "../speech";
 import { compareSpeech } from "../listen";
 import LanguagePicker from "../components/LanguagePicker";
 import { useVoice } from "../voice";
@@ -247,7 +247,7 @@ export default function ChatScreen() {
   }
 
   function practice(message) {
-    begin(message.id, (heard) => {
+    begin(message.id, async (heard) => {
       const result = compareSpeech(message.text, heard, language);
       setMessages((current) =>
         current.map((m) =>
@@ -256,9 +256,18 @@ export default function ChatScreen() {
             : m,
         ),
       );
-      // If the recognizer did not hear the full target, immediately model the
-      // complete correct phrase at a slower pace for the learner to imitate.
-      if (result.score < 100) replayCorrectPronunciation(message, true);
+      // If words were missed, pronounce those first, then model the complete
+      // correct phrase slowly so the learner can hear the difference.
+      if (result.score < 100) {
+        if (result.missed.length > 0) {
+          const missedText = result.missed.join(
+            ["Mandarin Chinese", "Japanese", "Thai"].includes(language) ? "" : " ",
+          );
+          const playback = await speak(missedText, language, { rate: 0.7 });
+          if (!playback.ok) setError(playback.reason || "Could not play the missed words.");
+        }
+        await replayCorrectPronunciation(message, true);
+      }
     });
   }
 
@@ -558,6 +567,19 @@ export default function ChatScreen() {
                       <Text style={styles.practiceLine}>
                         Listen to the correct version, then try saying it again.
                       </Text>
+                      {message.practice.missed.length > 0 && (
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() => speak(
+                            message.practice.missed.join(["Mandarin Chinese", "Japanese", "Thai"].includes(language) ? "" : " "),
+                            language,
+                            { rate: 0.7 },
+                          )}
+                          style={styles.replayButton}
+                        >
+                          <Text style={styles.replayButtonText}>▶ Hear missed words only</Text>
+                        </Pressable>
+                      )}
                       <Pressable
                         accessibilityRole="button"
                         onPress={() => replayCorrectPronunciation(message, true)}
@@ -665,6 +687,8 @@ export default function ChatScreen() {
           )}
           <TextInput
             style={styles.textInput}
+            lang={languageCode(language) || "en"}
+            accessibilityLabel={`Write your message in ${language}`}
             value={input}
             onChangeText={setInput}
             placeholder={`Write in ${language}...`}

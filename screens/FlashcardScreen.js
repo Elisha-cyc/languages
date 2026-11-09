@@ -102,6 +102,13 @@ export default function FlashcardScreen({ navigation, route }) {
           if (!res.ok) throw new Error(data.error || "Could not check that");
           setResult({ ...data, heard });
           setTries((count) => count + 1);
+          if (Array.isArray(data.missed) && data.missed.length > 0) {
+            const missedText = data.missed.join(
+              ["Mandarin Chinese", "Japanese", "Thai"].includes(language) ? "" : " ",
+            );
+            const playback = await speak(missedText, language, { rate: 0.75 });
+            if (!playback.ok) setProblem(playback.reason || "Could not play the missed words.");
+          }
         } catch (e) {
           setProblem(e.message);
         }
@@ -204,9 +211,21 @@ export default function FlashcardScreen({ navigation, route }) {
                 I heard: {result.heard || "(nothing)"}
               </Text>
               {result.missed.length > 0 && (
-                <Text style={styles.line}>
-                  Different or missing: {result.missed.join(", ")}
-                </Text>
+                <>
+                  <Text style={styles.line}>
+                    Different or missing: {result.missed.join(", ")}
+                  </Text>
+                  <Pressable
+                    style={styles.replayMissing}
+                    onPress={() => speak(
+                      result.missed.join(["Mandarin Chinese", "Japanese", "Thai"].includes(language) ? "" : " "),
+                      language,
+                      { rate: 0.75 },
+                    )}
+                  >
+                    <Text style={styles.replayMissingText}>🔊 Hear the missed words slowly</Text>
+                  </Pressable>
+                </>
               )}
               {result.tip && <Text style={styles.tip}>{result.tip}</Text>}
               <Text style={styles.note}>
@@ -367,6 +386,8 @@ const styles = StyleSheet.create({
   model: { textAlign: "center", fontSize: 21, fontWeight: "700", color: "#172b4d", padding: 8 },
   skip: { marginTop: 10, padding: 8, alignItems: "center" },
   skipText: { color: "#666", fontSize: 14 },
+  replayMissing: { marginTop: 9, padding: 10, borderRadius: 9, backgroundColor: "#eaf1ff", alignItems: "center" },
+  replayMissingText: { color: "#2a6fdb", fontSize: 14, fontWeight: "700" },
   button: {
     marginTop: 16,
     backgroundColor: "#2a6fdb",
