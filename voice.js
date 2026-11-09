@@ -55,6 +55,9 @@ export function useVoice(language) {
       await setAudioModeAsync({
         allowsRecording: true,
         playsInSilentMode: true,
+        // Keep the phone's receiver from being selected as the recording route.
+        // A connected wired/Bluetooth headset remains the system-selected route.
+        shouldRouteThroughEarpiece: false,
       });
       await recorder.prepareToRecordAsync();
       recorder.record();
@@ -80,6 +83,7 @@ export function useVoice(language) {
       await setAudioModeAsync({
         allowsRecording: false,
         playsInSilentMode: true,
+        shouldRouteThroughEarpiece: false,
       });
       const uri = recorder.uri;
       if (!uri) throw new Error("Nothing was recorded. Try again.");
