@@ -26,7 +26,7 @@ const layouts = {
 
 // Offline starter lexicon. It is intentionally extendable; this is not a full IME dictionary.
 const pinyinCandidates = {
-  ni:["你","呢","尼"], hao:["好","号","浩"], nihao:["你好"], wo:["我"], shi:["是","时","事","市"],
+  ni:["你","呢","尼"], hao:["好","号","浩"], nihao:["你好"], wo:["我"], shi:["是","时","事","市","十"],
   jie:["界","姐","接","借"], zai:["在","再"], jian:["见","间","件"], xue:["学","雪"], sheng:["生","声"],
   xuesheng:["学生"], zhong:["中","种","重"], guo:["国","过","果"], zhongguo:["中国"], ren:["人"],
   men:["们","门"], woaini:["我爱你"], ma:["吗","妈","马"], bu:["不","部"], hen:["很"], da:["大","打"],
@@ -45,13 +45,13 @@ const pinyinCandidates = {
   bei:["北","杯"], tianqi:["天气"], re:["热"], leng:["冷"], kaixin:["开心"], gaoxing:["高兴"],
   nanpengyou:["男朋友"], nvpengyou:["女朋友"], baba:["爸爸"], mama:["妈妈"], gege:["哥哥"], jiejie:["姐姐"],
   didi:["弟弟"], meimei:["妹妹"], haizi:["孩子"], xiaohai:["小孩"], yisheng:["医生"], xuesheng:["学生"],
-  zhongwen:["中文"], hanyu:["汉语"], hanyu:["汉语"], yingyu:["英语"], hanyu:["汉语"], putonghua:["普通话"],
+  zhongwen:["中文"], hanyu:["汉语"], yingyu:["英语"], putonghua:["普通话"],
   zhongguoren:["中国人"], meiguo:["美国"], zhongguohao:["中国好"], shouji:["手机"], yinhang:["银行"],
-  xianzai:["现在"], yidian:["一点"], duoshao:["多少"], ji:["几","机"], sui:["岁"], ge:["个","哥"],
-  ben:["本"], zhang:["张"], liang:["两","辆"], san:["三"], si:["四"], wu:["五","我"], liu:["六"],
+  yidian:["一点"], duoshao:["多少"], ji:["几","机"], sui:["岁"], ge:["个","哥"],
+  ben:["本"], zhang:["张"], liang:["两","辆"], san:["三"], si:["四"], wu:["五","物","无"], liu:["六"],
   qi:["七","起"], ba:["八","吧"], jiu:["九","就"], shi2:["十"], bai:["百"], qian2:["千"],
   yi:["一","衣"], er:["二","儿"], sanfen:["三分"], zaijian:["再见"], duibuqi:["对不起"], meiguanxi:["没关系"],
-  xiexie:["谢谢"], qingwen:["请问"], buhao:["不好"], zaoshang:["早上"], xiawu:["下午"], wanshang:["晚上"],
+  qingwen:["请问"], buhao:["不好"], zaoshang:["早上"], xiawu:["下午"], wanshang:["晚上"],
   zhongwu:["中午"], xingqi:["星期"], xingqiyi:["星期一"], xingqitian:["星期天"], yue:["月"], nian:["年"],
   ri:["日"], hao3:["号"], shengri:["生日"], shenghuo:["生活"], fangjian:["房间"], shu:["书","数"],
   shuiguo:["水果"], pingguo:["苹果"], cha:["茶","查"], kafei:["咖啡"], fan:["饭","反"], miantiao:["面条"],
