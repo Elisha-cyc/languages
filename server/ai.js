@@ -648,10 +648,6 @@ function chatSystemPrompt({
       ? `Also add "pronunciation" for your reply using ${pronunciationGuide}. This is a written guide, not an assessment of the learner's actual accent.`
       : "",
     `Return a single valid JSON object only: {"reply":"...","translation":"...","correction":null${pronunciationGuide ? ',"pronunciation":"..."' : ""}}.`,
-    pronunciationGuide
-      ? `Also add "pronunciation" for your reply using ${pronunciationGuide}.`
-      : "",
-    `Reply with JSON only, with no markdown fences: {"reply":"...","translation":"...","correction":null${pronunciationGuide ? ',"pronunciation":"..."' : ""}}`,
   ]
     .filter(Boolean)
     .join("\n");
