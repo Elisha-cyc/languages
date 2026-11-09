@@ -406,10 +406,10 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.flex}
+      style={[styles.flex, mode === "voice" && styles.voiceScreen]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.header}>
+      <View style={[styles.header, mode === "voice" && styles.voiceHeader]}>
         <View style={styles.flex}>
           <Text style={styles.headerName}>
             {persona ? `${persona} (AI)` : "AI assistant"}
@@ -446,7 +446,7 @@ export default function ChatScreen() {
 
       <ScrollView
         ref={scroller}
-        style={styles.flex}
+        style={[styles.flex, mode === "voice" && styles.voiceConversation]}
         contentContainerStyle={styles.messages}
         onContentSizeChange={() =>
           scroller.current && scroller.current.scrollToEnd({ animated: true })
@@ -638,6 +638,9 @@ export default function ChatScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: "#f2f4f8" },
+  voiceScreen: { backgroundColor: "#071426" },
+  voiceHeader: { backgroundColor: "#0b1d31", borderBottomColor: "#1b3651" },
+  voiceConversation: { backgroundColor: "#071426" },
   container: { padding: 16, backgroundColor: "#f2f4f8", flexGrow: 1 },
   title: { fontSize: 24, fontWeight: "bold" },
   note: {
@@ -695,8 +698,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#d5d9e0",
   },
-  headerName: { fontSize: 17, fontWeight: "bold" },
-  headerSub: { fontSize: 12, color: "#666", marginTop: 2 },
+  headerName: { fontSize: 17, fontWeight: "800", color: "#18324d" },
+  headerSub: { fontSize: 12, color: "#718096", marginTop: 2 },
+  voiceHeaderName: { color: "#f3f8ff" },
   smallButton: {
     backgroundColor: "#dbe7ff",
     borderRadius: 14,
