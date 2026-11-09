@@ -7,8 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { NATIVE_LANGUAGE } from "../config";
-import { compareSpeech } from "../listen";
+import { API_URL, NATIVE_LANGUAGE } from "../config";
 import { speakAndWait, stopSpeaking } from "../speech";
 import { useQuietOnLeave } from "../useQuietOnLeave";
 import { useVoice } from "../voice";
@@ -81,11 +80,15 @@ const CATEGORIES = [
 export default function PinyinTeacherScreen() {
   const [category, setCategory] = useState("initials");
   const [index, setIndex] = useState(0);
-  const [feedback, setFeedback] = useState(null);
+  const [result, setResult] = useState(null);
+  const [tries, setTries] = useState(0);
+  const [missingPlayback, setMissingPlayback] = useState("");
   const [error, setError] = useState(null);
   const voice = useVoice("Mandarin Chinese");
   const item = LESSONS[category][index];
   const explanationLanguage = NATIVE_LANGUAGE || "English";
+  const passed = result && result.score >= 70;
+  const canMove = passed || tries >= 3;
 
   useQuietOnLeave(() => {
     stopSpeaking();
@@ -97,15 +100,20 @@ export default function PinyinTeacherScreen() {
     stopSpeaking();
     setCategory(nextCategory);
     setIndex(0);
-    setFeedback(null);
+    setResult(null);
+    setTries(0);
+    setMissingPlayback("");
     setError(null);
   }
 
   async function hearTeacher() {
     voice.cancel();
     setError(null);
-    await speakAndWait(item.cue, explanationLanguage);
-    await speakAndWait(item.character, "Mandarin Chinese", { rate: 0.75 });
+    stopSpeaking();
+    const cue = await speakAndWait(item.cue, explanationLanguage);
+    if (!cue.ok) setError(cue.reason || "The teacher could not play the explanation.");
+    const example = await speakAndWait(item.character, "Mandarin Chinese", { rate: 0.72 });
+    if (!example.ok) setError(example.reason || "Could not play the Mandarin example.");
   }
 
   function repeatAfterTeacher() {
@@ -115,16 +123,43 @@ export default function PinyinTeacherScreen() {
     }
 
     stopSpeaking();
-    setFeedback(null);
+    setResult(null);
+    setMissingPlayback("");
     setError(null);
     voice.toggle({
-      onText: (heard) => {
-        const comparison = compareSpeech(
-          item.character,
-          heard,
-          "Mandarin Chinese",
-        );
-        setFeedback({ heard, understood: comparison.score >= 80 });
+      onText: async (heard) => {
+        try {
+          const response = await fetch(`${API_URL}/speech/compare`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              language: "Mandarin Chinese",
+              target: item.character,
+              heard,
+            }),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || "Could not check that pronunciation.");
+          }
+          setResult({ ...data, heard });
+          setTries((count) => count + 1);
+
+          if (Array.isArray(data.missed) && data.missed.length > 0) {
+            const missedText = data.missed.join("");
+            setMissingPlayback("Playing the part the recognizer did not match…");
+            const playback = await speakAndWait(missedText, "Mandarin Chinese", { rate: 0.72 });
+            setMissingPlayback(
+              playback.ok
+                ? "Finished playing the missed sound. Listen and try again."
+                : playback.reason || "Could not play the missed sound. Use replay to try again.",
+            );
+          } else {
+            setMissingPlayback("The recognizer matched the example. Keep practising to build consistency.");
+          }
+        } catch (e) {
+          setError(e.message || "Pronunciation checking failed. Please try again.");
+        }
       },
       onError: setError,
     });
@@ -136,7 +171,9 @@ export default function PinyinTeacherScreen() {
     setIndex((current) =>
       Math.max(0, Math.min(LESSONS[category].length - 1, current + offset)),
     );
-    setFeedback(null);
+    setResult(null);
+    setTries(0);
+    setMissingPlayback("");
     setError(null);
   }
 
@@ -203,12 +240,45 @@ export default function PinyinTeacherScreen() {
         )}
       </Pressable>
 
-      {feedback ? (
-        <Text style={[styles.feedback, feedback.understood ? styles.good : styles.tryAgain]}>
-          {feedback.understood
-            ? `I heard ${feedback.heard}. Good repetition!`
-            : `I heard ${feedback.heard || "something different"}. Listen again and try once more.`}
-        </Text>
+      {result ? (
+        <View style={[styles.result, passed ? styles.good : styles.tryAgainPanel]}>
+          <Text style={styles.score}>
+            {passed ? "Good repetition! " : "Keep practising. "}
+            {result.score}%
+          </Text>
+          <Text style={styles.feedback}>I heard: {result.heard || "(nothing)"}</Text>
+          {Array.isArray(result.missed) && result.missed.length > 0 ? (
+            <>
+              <Text style={styles.feedback}>Different or missing: {result.missed.join(" ")}</Text>
+              <Pressable
+                style={styles.replayButton}
+                onPress={async () => {
+                  setMissingPlayback("Playing the missed sound…");
+                  const playback = await speakAndWait(
+                    result.missed.join(""),
+                    "Mandarin Chinese",
+                    { rate: 0.72 },
+                  );
+                  setMissingPlayback(
+                    playback.ok ? "Finished playing the missed sound." : playback.reason || "Replay failed.",
+                  );
+                }}
+              >
+                <Text style={styles.replayText}>🔊 Replay missed sound slowly</Text>
+              </Pressable>
+            </>
+          ) : null}
+          {!!missingPlayback && <Text style={styles.playbackNote}>{missingPlayback}</Text>}
+          {result.tip ? <Text style={styles.feedback}>{result.tip}</Text> : null}
+          <Text style={styles.caution}>
+            This score checks what speech recognition understood. It is not a scientific tone or accent score.
+          </Text>
+          {!passed && tries < 3 ? (
+            <Pressable style={styles.retryButton} onPress={repeatAfterTeacher}>
+              <Text style={styles.retryText}>🎤 Try again ({tries}/3)</Text>
+            </Pressable>
+          ) : null}
+        </View>
       ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -221,9 +291,9 @@ export default function PinyinTeacherScreen() {
 
       <View style={styles.navigation}>
         <Pressable
-          style={[styles.navButton, index === 0 && styles.disabled]}
+          style={[styles.navButton, (index === 0 || !canMove) && styles.disabled]}
           onPress={() => move(-1)}
-          disabled={index === 0}
+          disabled={index === 0 || !canMove}
         >
           <Text style={styles.navText}>‹ Previous</Text>
         </Pressable>
@@ -233,7 +303,7 @@ export default function PinyinTeacherScreen() {
             index === LESSONS[category].length - 1 && styles.disabled,
           ]}
           onPress={() => move(1)}
-          disabled={index === LESSONS[category].length - 1}
+          disabled={index === LESSONS[category].length - 1 || !canMove}
         >
           <Text style={styles.navText}>Next ›</Text>
         </Pressable>
@@ -283,9 +353,16 @@ const styles = StyleSheet.create({
   button: { alignItems: "center", backgroundColor: "#2a6fdb", borderRadius: 12, padding: 15, marginTop: 10 },
   listening: { backgroundColor: "#c0392b" },
   buttonText: { color: "white", fontSize: 16, fontWeight: "700" },
-  feedback: { fontSize: 15, lineHeight: 22, marginTop: 12 },
-  good: { color: "#16794b" },
-  tryAgain: { color: "#9a6700" },
+  result: { marginTop: 12, padding: 14, borderRadius: 12, backgroundColor: "white", borderWidth: 1, borderColor: "#d5d9e0" },
+  score: { fontSize: 20, fontWeight: "800", color: "#172b4d", textAlign: "center" },
+  feedback: { fontSize: 15, lineHeight: 22, marginTop: 8, color: "#475467", textAlign: "center" },
+  good: { borderColor: "#9bc9a5", backgroundColor: "#eef8f0" },
+  tryAgainPanel: { borderColor: "#ecd48f", backgroundColor: "#fff8e6" },
+  replayButton: { marginTop: 10, padding: 11, borderRadius: 9, backgroundColor: "#dbe7ff", alignItems: "center" },
+  replayText: { color: "#245bb0", fontWeight: "700" },
+  playbackNote: { marginTop: 8, fontSize: 13, textAlign: "center", color: "#667085" },
+  retryButton: { marginTop: 12, padding: 12, borderRadius: 10, backgroundColor: "#2a6fdb", alignItems: "center" },
+  retryText: { color: "white", fontWeight: "700" },
   error: { color: "#c0392b", fontSize: 14, lineHeight: 20, marginTop: 12 },
   caution: { color: "#667085", fontSize: 13, lineHeight: 19, marginTop: 14 },
   navigation: { flexDirection: "row", justifyContent: "space-between", marginTop: 18 },
