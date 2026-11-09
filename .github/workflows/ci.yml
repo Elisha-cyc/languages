@@ -71,7 +71,7 @@ jobs:
       - name: Create an isolated baseline schema
         run: |
           psql --set ON_ERROR_STOP=1 <<'SQL'
-          DO $$
+          DO $verify$
           BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
               CREATE ROLE anon NOLOGIN;
@@ -127,7 +127,7 @@ jobs:
       - name: Verify course schema, RLS and least-privilege grants
         run: |
           psql --set ON_ERROR_STOP=1 <<'SQL'
-          DO $$
+          DO $verify$
           DECLARE
             v_table_name text;
             course_tables text[] := ARRAY[
@@ -182,7 +182,7 @@ jobs:
               RAISE EXCEPTION 'Course content must be unique per lesson and native language';
             END IF;
           END
-          $;
+          $verify$;
           SQL
       - name: Verify server-only public schema access and foreign-key indexes
         run: |
@@ -234,5 +234,5 @@ jobs:
               RAISE EXCEPTION 'Sleep foreign-key indexes are missing';
             END IF;
           END
-          $;
+          $verify$;
           SQL
