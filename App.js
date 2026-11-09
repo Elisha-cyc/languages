@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "./auth";
 import SpeechBanner from "./components/SpeechBanner";
 import AuthScreen from "./screens/AuthScreen";
 import DashboardScreen from "./screens/DashboardScreen";
+import ChineseAcademyScreen from "./screens/ChineseAcademyScreen";
 import LearnScreen from "./screens/LearnScreen";
 import LibraryScreen from "./screens/LibraryScreen";
 import ProfileScreen from "./screens/ProfileScreen";
@@ -104,6 +105,11 @@ function Root() {
             name="Home"
             component={MainTabs}
             options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ChineseAcademy"
+            component={ChineseAcademyScreen}
+            options={{ title: "Chinese Academy" }}
           />
           <Stack.Screen
             name="Languages"
