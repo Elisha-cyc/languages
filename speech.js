@@ -662,13 +662,27 @@ export async function speak(text, language, options = {}) {
 // Speaks and waits until it has finished. Used for hands-free reading.
 export function speakAndWait(text, language, options = {}) {
   return new Promise((resolve) => {
-    const guard = setTimeout(resolve, 30 * 1000);
-    const done = () => {
+    let settled = false;
+    const done = (result = { ok: true }) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(guard);
-      resolve();
+      resolve(result);
     };
-    speak(text, language, { ...options, onFinish: done }).then((result) => {
-      if (!result || !result.ok) done();
+    const guard = setTimeout(
+      () => done({ ok: false, reason: "Speech did not finish. Check the audio connection and try again." }),
+      30 * 1000,
+    );
+    speak(text, language, {
+      ...options,
+      onFinish: () => {
+        options.onFinish && options.onFinish();
+        done({ ok: true });
+      },
+    }).then((result) => {
+      if (!result || !result.ok) done(result || { ok: false, reason: "Speech could not start." });
+    }).catch((error) => {
+      done({ ok: false, reason: error.message || "Speech playback failed." });
     });
   });
 }
