@@ -110,8 +110,10 @@ export default function FlashcardScreen({ navigation, route }) {
               ["Mandarin Chinese", "Japanese", "Thai"].includes(language) ? "" : " ",
             );
             setMissingPlayback("Playing the parts you missed…");
-            await speakAndWait(missedText, language, { rate: 0.72 });
-            setMissingPlayback("Finished playing the missed parts. Listen again if needed.");
+            const playback = await speakAndWait(missedText, language, { rate: 0.72 });
+            setMissingPlayback(playback.ok
+              ? "Finished playing the missed parts. Listen again if needed."
+              : playback.reason || "Could not play the missed parts. Tap replay to try again.");
           } else {
             setMissingPlayback("Great — no missing words were detected.");
           }
@@ -225,12 +227,14 @@ export default function FlashcardScreen({ navigation, route }) {
                     style={styles.replayMissing}
                     onPress={async () => {
                       setMissingPlayback("Playing the parts you missed…");
-                      await speakAndWait(
+                      const playback = await speakAndWait(
                         result.missed.join(["Mandarin Chinese", "Japanese", "Thai"].includes(language) ? "" : " "),
                         language,
                         { rate: 0.72 },
                       );
-                      setMissingPlayback("Finished playing the missed parts.");
+                      setMissingPlayback(playback.ok
+                        ? "Finished playing the missed parts."
+                        : playback.reason || "Could not play the missed parts. Try again.");
                     }}
                   >
                     <Text style={styles.replayMissingText}>🔊 Play missed words slowly</Text>
