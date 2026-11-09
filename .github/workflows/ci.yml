@@ -182,5 +182,57 @@ jobs:
               RAISE EXCEPTION 'Course content must be unique per lesson and native language';
             END IF;
           END
-          $$;
+          $;
+          SQL
+      - name: Verify server-only public schema access and foreign-key indexes
+        run: |
+          psql --set ON_ERROR_STOP=1 <<'SQL'
+          DO $
+          DECLARE
+            v_table record;
+            v_object text;
+          BEGIN
+            FOR v_table IN
+              SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+            LOOP
+              v_object := format('public.%I', v_table.tablename);
+              IF has_table_privilege('anon', v_object, 'SELECT')
+                 OR has_table_privilege('anon', v_object, 'INSERT')
+                 OR has_table_privilege('anon', v_object, 'UPDATE')
+                 OR has_table_privilege('anon', v_object, 'DELETE')
+                 OR has_table_privilege('authenticated', v_object, 'SELECT')
+                 OR has_table_privilege('authenticated', v_object, 'INSERT')
+                 OR has_table_privilege('authenticated', v_object, 'UPDATE')
+                 OR has_table_privilege('authenticated', v_object, 'DELETE') THEN
+                RAISE EXCEPTION 'Browser roles have table access to %', v_object;
+              END IF;
+              IF NOT has_table_privilege('service_role', v_object, 'SELECT')
+                 OR NOT has_table_privilege('service_role', v_object, 'INSERT') THEN
+                RAISE EXCEPTION 'Trusted server role is missing access to %', v_object;
+              END IF;
+            END LOOP;
+
+            IF EXISTS (
+              SELECT 1
+              FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE n.nspname = 'public'
+                AND p.prokind = 'f'
+                AND (has_function_privilege('anon', p.oid, 'EXECUTE')
+                  OR has_function_privilege('authenticated', p.oid, 'EXECUTE'))
+            ) THEN
+              RAISE EXCEPTION 'Browser roles can execute a public RPC function';
+            END IF;
+
+            IF has_schema_privilege('anon', 'public', 'CREATE')
+               OR has_schema_privilege('authenticated', 'public', 'CREATE') THEN
+              RAISE EXCEPTION 'Browser roles can create objects in public schema';
+            END IF;
+
+            IF to_regclass('public.idx_sleep_items_session_id') IS NULL
+               OR to_regclass('public.idx_sleep_session_words_word_id') IS NULL THEN
+              RAISE EXCEPTION 'Sleep foreign-key indexes are missing';
+            END IF;
+          END
+          $;
           SQL
