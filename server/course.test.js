@@ -3,6 +3,11 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { validateLesson, parseObject, isSequentiallyUnlocked } = require("./course-validation");
+process.env.SUPABASE_URL = "https://example.supabase.co";
+process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
+const supabase = require("./supabase");
+const { findCourseContentForAttempt } = require("./course");
+
 
 function question(index = 0) {
   return {
@@ -105,4 +110,34 @@ test("unlocks only the first lesson until earlier lessons are passed", () => {
 test("allows learners to revisit a completed lesson", () => {
   assert.equal(isSequentiallyUnlocked([1, 2, 3], [2], 2), true);
   assert.equal(isSequentiallyUnlocked([1, 2, 3], [], 99), false);
+});
+
+test("course attempt lookup is scoped to the learner's explanation language", async () => {
+  const originalFrom = supabase.from;
+  const filters = [];
+  let selectedTable = null;
+  supabase.from = (table) => {
+    selectedTable = table;
+    return {
+      select() { return this; },
+      eq(field, value) { filters.push([field, value]); return this; },
+      maybeSingle: async () => ({ data: { lesson_id: 41 }, error: null }),
+    };
+  };
+  try {
+    const row = await findCourseContentForAttempt({
+      lessonId: 41, language: "Mandarin Chinese", level: "Beginner",
+      nativeLanguage: "French",
+    });
+    assert.equal(row.lesson_id, 41);
+    assert.equal(selectedTable, "course_lesson_content");
+    assert.deepEqual(filters, [
+      ["lesson_id", 41],
+      ["language", "Mandarin Chinese"],
+      ["level", "Beginner"],
+      ["native_language", "French"],
+    ]);
+  } finally {
+    supabase.from = originalFrom;
+  }
 });
