@@ -398,41 +398,4 @@ router.get("/writer", (req, res) => {
   res.type("html").send(writerPage({ char: chars[0], mode, outline, size }));
 });
 
-router.post("/written", async (req, res) => {
-  console.log("HANZI WRITTEN REQUEST:", req.body);
-
-  const { user_id, char, mistakes } = req.body || {};
-
-  try {
-    const user = await getUser(user_id);
-
-    if (!user) {
-      return res.status(404).json({
-        error: "That user does not exist",
-      });
-    }
-
-    if (!BY_CHAR.has(char) || !Number.isInteger(mistakes) || mistakes < 0) {
-      return res.status(400).json({
-        error: "char and mistakes are required",
-      });
-    }
-
-    await recordMany(user.id, [
-      {
-        char,
-        correct: mistakes === 0,
-      },
-    ]);
-
-    res.json({ saved: true });
-  } catch (err) {
-    console.error("Hanzi writing save error:", err);
-
-    res.status(500).json({
-      error: "Could not save writing practice.",
-    });
-  }
-});
-
 module.exports = router;
