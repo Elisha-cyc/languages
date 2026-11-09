@@ -145,6 +145,13 @@ export default function TeacherScreen() {
     } else {
       await speakAndWait(step.retry, nativeName);
       if (id !== run.current) return;
+      if (check.missed && check.missed.length > 0) {
+        const missedText = check.missed.join(
+          ["Mandarin Chinese", "Japanese", "Thai"].includes(language) ? "" : " ",
+        );
+        await speakAndWait(missedText, language, { rate: SLOW });
+        if (id !== run.current) return;
+      }
       await speakAndWait(step.phrase, language, { rate: SLOW });
     }
   }
@@ -318,9 +325,21 @@ export default function TeacherScreen() {
             {result.pass ? step.praise : step.retry}
           </Text>
           {!result.pass && result.missed && result.missed.length > 0 && (
-            <Text style={styles.small}>
-              Words I did not catch: {result.missed.join(", ")}
-            </Text>
+            <>
+              <Text style={styles.small}>
+                Words I did not catch: {result.missed.join(", ")}
+              </Text>
+              <Pressable
+                style={styles.replayMissing}
+                onPress={() => speak(
+                  result.missed.join(["Mandarin Chinese", "Japanese", "Thai"].includes(language) ? "" : " "),
+                  language,
+                  { rate: SLOW },
+                )}
+              >
+                <Text style={styles.replayMissingText}>🔊 Hear the missed words</Text>
+              </Pressable>
+            </>
           )}
           {!result.pass && step.tip ? (
             <Text style={styles.small}>Tip: {step.tip}</Text>
@@ -418,6 +437,8 @@ const styles = StyleSheet.create({
   meaning: { fontSize: 17, color: "#444" },
   small: { color: "#667085", fontSize: 14, marginTop: 4 },
   resultText: { fontSize: 17, marginTop: 6 },
+  replayMissing: { marginTop: 9, padding: 10, borderRadius: 9, backgroundColor: "#eaf1ff", alignSelf: "flex-start" },
+  replayMissingText: { color: "#2a6fdb", fontSize: 14, fontWeight: "700" },
   status: { flexDirection: "row", alignItems: "center", marginVertical: 8 },
   statusText: { marginLeft: 10, color: "#555" },
   prompt: { fontSize: 17, marginVertical: 10 },
