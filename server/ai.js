@@ -650,7 +650,7 @@ function chatSystemPrompt({
     pronunciationGuide
       ? `Also add "pronunciation" for your reply using ${pronunciationGuide}. This is a written guide, not an assessment of the learner's actual accent.`
       : "",
-    `Return a single valid JSON object only: {"reply":"...","translation":"...","correction":null${pronunciationGuide ? ',"pronunciation":"..."' : ""},"estimatedLevel":${levelMode === "adaptive" ? '"Beginner|Intermediate|Advanced|null"' : "null"},"levelConfidence":"low|medium|high"}.`,
+    `Return a single valid JSON object only: {"reply":"...","translation":"...","correction":null${pronunciationGuide ? ',"pronunciation":"..."' : ""},"estimatedLevel":null,"levelConfidence":"low"}. In adaptive mode estimatedLevel may be "Beginner", "Intermediate", "Advanced", or null; confidence must be low, medium, or high. In fixed mode estimatedLevel must be null.`,
   ]
     .filter(Boolean)
     .join("\n");
