@@ -83,7 +83,7 @@ jobs:
               CREATE ROLE service_role NOLOGIN;
             END IF;
           END
-          $$;
+          $verify$;
 
           CREATE TABLE public.languages (
             name text PRIMARY KEY
