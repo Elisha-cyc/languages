@@ -52,7 +52,19 @@ function MainTabs() {
     <Tab.Navigator
       screenOptions={{
         headerTitleAlign: "center",
-        tabBarActiveTintColor: "#2a6fdb",
+        headerStyle: { backgroundColor: "#ffffff" },
+        headerTitleStyle: { color: "#18324d", fontWeight: "800" },
+        headerTintColor: "#18324d",
+        tabBarActiveTintColor: "#1687a6",
+        tabBarInactiveTintColor: "#8795a5",
+        tabBarStyle: {
+          backgroundColor: "#ffffff",
+          borderTopColor: "#e7edf3",
+          height: 66,
+          paddingTop: 7,
+          paddingBottom: 8,
+        },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: "700" },
       }}
     >
       <Tab.Screen
