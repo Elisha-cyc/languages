@@ -138,6 +138,13 @@ async function createSession(userId, language, source, label, items) {
   return sessionId;
 }
 
+async function saveEveningQuiz(sessionId, results) {
+  return supabase.rpc("save_sleep_evening_quiz", {
+    p_session_id: sessionId,
+    p_results: results,
+  });
+}
+
 // ---------- Source 1: Our lessons ----------
 
 router.post("/sessions", async (req, res) => {
@@ -548,10 +555,7 @@ router.post("/sessions/:id/evening", async (req, res) => {
       is_correct: item.correct,
     }));
 
-    const { data, error } = await supabase.rpc("save_sleep_evening_quiz", {
-      p_session_id: session.id,
-      p_result: results,
-    });
+    const { data, error } = await saveEveningQuiz(session.id, results);
 
     if (error) throw error;
 
@@ -774,3 +778,4 @@ router.get("/history", async (req, res) => {
 });
 
 module.exports = router;
+module.exports.saveEveningQuiz = saveEveningQuiz;
