@@ -11,6 +11,13 @@ export default function DashboardScreen({ navigation }) {
       <Text style={styles.sub}>What would you like to do today?</Text>
 
       <Tile
+        icon="🇨🇳"
+        title="Chinese Academy — beginner to advanced"
+        text="Your dedicated Mandarin learning path: pronunciation, lessons, characters, speaking, reading and writing"
+        onPress={() => navigation.navigate("ChineseAcademy")}
+      />
+
+      <Tile
         icon="📈"
         title="My learning progress"
         text="Track completed lessons, skill scores and vocabulary reviews"
