@@ -147,3 +147,32 @@ The Chinese Academy is ready to be called a self-contained beginner-to-advanced 
 - progress is persisted and mastery gates work;
 - no core pathway is a placeholder, dead link or unsupported promise;
 - the deployed web experience passes end-to-end tests.
+
+
+## Verified implementation baseline (checked 2026-11-09)
+
+This section distinguishes the intended HSK 3.0 destination from the curriculum currently implemented in the repository.
+
+- The current `server/hsk.js` and `server/hsk-vocabulary.json` implement the **2015 HSK 2.0 six-level vocabulary pathway**. The current app-level mapping is Beginner = HSK 1, Intermediate = HSK 2–3, Advanced = HSK 4–6.
+- The Chinese course generator uses those HSK 2.0 word lists and grammar scopes. It is not yet an HSK 3.0 curriculum.
+- The official Chinese Tests Service syllabus page identifies the HSK 3.0 components as tasks, topics, vocabulary, Chinese characters and grammar, and lists Levels 1–6 plus the combined Levels 7–9: https://www.chinesetest.cn/syllabus
+- The official HSK 3.0 syllabus must be ingested as a new, separately versioned source. Do not relabel the existing HSK 2.0 dataset as HSK 3.0 or silently replace it.
+
+### Live database snapshot
+
+The connected production database was inspected on 2026-11-09:
+
+- 3,500 legacy lesson slots exist: 415 are marked `ready` and 3,085 are marked `empty`. Empty legacy slots are generated on demand by the legacy lesson-maker; they are not proof of authored, reviewed lesson content.
+- The legacy `words` table contains 3,319 word rows, but coverage is uneven across languages and levels.
+- The newer multi-skill `course_lesson_content` table currently has zero cached lessons. It generates and caches complete lessons on demand.
+- Course attempts, skill-progress rows, vocabulary-review rows, course enrolments and conversation-turn rows were empty at the time of the snapshot. This is an unused/untested live feature baseline, not proof that persistence works end-to-end with a real learner.
+
+### Remaining curriculum release gates
+
+1. Download and archive the exact official HSK 3.0 syllabus source; record publisher, version, publication date, effective date and checksum.
+2. Extract and independently validate all nine levels' vocabulary, characters, grammar, topics and task requirements. Preserve the original HSK 2.0 pathway as a separately labelled legacy course.
+3. Map each new HSK 3.0 item to a lesson sequence with prerequisites, spaced review and listening, speaking, reading and writing practice.
+4. Add automated coverage reports that identify missing, duplicated, incorrectly levelled or unsupported items before release.
+5. Generate representative lessons at each level, have qualified speakers/teachers review them, and record review status before describing the curriculum as complete.
+6. Run a real learner journey for each supported language and level, including signup, placement, lesson generation, speaking/writing feedback, review, progress persistence and return-login recovery.
+7. Verify live speech credentials and real browser microphone/audio behavior. Do not treat speech transcription as pronunciation scoring.
