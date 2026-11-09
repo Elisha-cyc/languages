@@ -46,6 +46,7 @@ export default function ChatScreen() {
   const [mode, setMode] = useState("text"); // text, voice
   const [language, setLanguage] = useState("French");
   const [level, setLevel] = useState("Beginner");
+  const [levelMode, setLevelMode] = useState("adaptive");
   const [topic, setTopic] = useState(TOPICS[0]);
   const [persona, setPersona] = useState("");
   const [messages, setMessages] = useState([]);
@@ -125,6 +126,7 @@ export default function ChatScreen() {
         user_id: USER_ID,
         language,
         level,
+        levelMode,
         topic,
         nativeLanguage: NATIVE_LANGUAGE,
         history: history
@@ -146,6 +148,7 @@ export default function ChatScreen() {
     try {
       const data = await requestReply([]);
       setPersona(data.persona || "");
+      if (data.estimatedLevel && data.levelConfidence === "high") setLevel(data.estimatedLevel);
       setMessages([
         {
           id: nextId.current++,
@@ -178,6 +181,7 @@ export default function ChatScreen() {
 
     try {
       const data = await requestReply(history);
+      if (data.estimatedLevel && data.levelConfidence === "high") setLevel(data.estimatedLevel);
       setMessages((current) => [
         ...current.map((m) =>
           m.id === userMessage.id ? { ...m, correction: data.correction } : m,
@@ -321,7 +325,17 @@ export default function ChatScreen() {
         <Text style={styles.label}>Language</Text>
         <LanguagePicker value={language} onChange={chooseLanguage} />
 
-        <Text style={styles.label}>Your level</Text>
+        <Text style={styles.label}>How should LinguaApp choose your level?</Text>
+        <View style={styles.chips}>
+          <Pressable style={[styles.chip, levelMode === "adaptive" && styles.chipOn]} onPress={() => setLevelMode("adaptive")}>
+            <Text style={[styles.chipText, levelMode === "adaptive" && styles.chipTextOn]}>✨ Auto-adjust</Text>
+          </Pressable>
+          <Pressable style={[styles.chip, levelMode === "fixed" && styles.chipOn]} onPress={() => setLevelMode("fixed")}>
+            <Text style={[styles.chipText, levelMode === "fixed" && styles.chipTextOn]}>Choose myself</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.note}>{levelMode === "adaptive" ? "The AI studies several of your messages before suggesting a level change. One sentence alone will not move you up." : "Your chosen level stays fixed until you change it."}</Text>
+        <Text style={styles.label}>Starting level</Text>
         {/chinese/i.test(language) && (
           <Text style={styles.note}>Conversation practice follows HSK 1, HSK 2–3, or HSK 4–6 for your selected level.</Text>
         )}
@@ -415,7 +429,7 @@ export default function ChatScreen() {
             {persona ? `${persona} (AI)` : "AI assistant"}
           </Text>
           <Text style={[styles.headerSub, mode === "voice" && styles.voiceHeaderSub]}>
-            {language} · {level} · {topic}
+            {language} · {level}{levelMode === "adaptive" ? " · Adaptive" : ""} · {topic}
           </Text>
         </View>
         <Pressable style={styles.smallButton} onPress={switchMode}>
