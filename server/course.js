@@ -415,7 +415,12 @@ router.post("/attempt", async (req, res) => {
   }
   try {
     const { data: lesson, error: lessonError } = await supabase.from("course_lesson_content")
-      .select("lesson_id").eq("lesson_id", Number(lessonId)).eq("language", language).eq("level", level).maybeSingle();
+      .select("lesson_id")
+      .eq("lesson_id", Number(lessonId))
+      .eq("language", language)
+      .eq("level", level)
+      .eq("native_language", req.user.nativeLanguage || "English")
+      .maybeSingle();
     if (lessonError) throw lessonError;
     if (!lesson) return res.status(404).json({ error: "That course lesson was not found." });
 
