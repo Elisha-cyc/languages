@@ -18,6 +18,19 @@ import { useQuietOnLeave } from "../useQuietOnLeave";
 const PASS = 70; // percent
 const MAX_TRIES = 3;
 
+function getInputLanguageTag(language) {
+  const tags = {
+    French: "fr-FR", Spanish: "es-ES", German: "de-DE",
+    Italian: "it-IT", Portuguese: "pt-BR", Dutch: "nl-NL",
+    Swedish: "sv-SE", Polish: "pl-PL", Turkish: "tr-TR",
+    Indonesian: "id-ID", Swahili: "sw-KE", Russian: "ru-RU",
+    "Mandarin Chinese": "zh-CN", Japanese: "ja-JP", Korean: "ko-KR",
+    Hindi: "hi-IN", Arabic: "ar-SA", Greek: "el-GR",
+    Hebrew: "he-IL", Thai: "th-TH",
+  };
+  return tags[language] || "en";
+}
+
 export default function FlashcardScreen({ navigation, route }) {
   const { lessonId, language } = route.params;
   const { data: words, error } = useFetch(`/lessons/${lessonId}/words`);
@@ -220,14 +233,23 @@ export default function FlashcardScreen({ navigation, route }) {
           <Text style={styles.panelTitle}>Write from meaning</Text>
           <Text style={styles.note}>{card.meaning}</Text>
           <TextInput
-            accessibilityLabel="Write the Chinese sentence from its meaning"
+            accessibilityLabel={`Write the ${language} text from its meaning`}
             style={styles.writingInput}
             value={writingAnswer}
             onChangeText={setWritingAnswer}
-            placeholder="Type the Chinese sentence here"
+            placeholder={`Type in ${language} here`}
+            lang={getInputLanguageTag(language)}
+            keyboardType="default"
+            autoCorrect={false}
+            spellCheck={false}
             multiline
             textAlignVertical="top"
           />
+          <Text style={styles.keyboardHint}>
+            Keyboard language: {language}. If your device keeps showing another
+            layout, add {language} in your phone's keyboard settings and switch
+            to it while typing.
+          </Text>
           <Pressable style={styles.reveal} onPress={() => setShowWritingModel((visible) => !visible)}>
             <Text style={styles.revealText}>{showWritingModel ? "Hide model" : "Compare with model"}</Text>
           </Pressable>
@@ -339,6 +361,7 @@ const styles = StyleSheet.create({
   },
   writing: { width: "100%", maxWidth: 360, marginTop: 16, backgroundColor: "white", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "#d5d9e0" },
   writingInput: { minHeight: 80, borderWidth: 1, borderColor: "#d5d9e0", borderRadius: 10, padding: 11, marginTop: 9, fontSize: 17, backgroundColor: "#fbfcff" },
+  keyboardHint: { color: "#777", fontSize: 12, lineHeight: 17, marginTop: 7, textAlign: "center" },
   reveal: { alignSelf: "center", padding: 10 },
   revealText: { color: "#2a6fdb", fontSize: 15, fontWeight: "700" },
   model: { textAlign: "center", fontSize: 21, fontWeight: "700", color: "#172b4d", padding: 8 },
