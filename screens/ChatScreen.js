@@ -411,10 +411,10 @@ export default function ChatScreen() {
     >
       <View style={[styles.header, mode === "voice" && styles.voiceHeader]}>
         <View style={styles.flex}>
-          <Text style={styles.headerName}>
+          <Text style={[styles.headerName, mode === "voice" && styles.voiceHeaderName]}>
             {persona ? `${persona} (AI)` : "AI assistant"}
           </Text>
-          <Text style={styles.headerSub}>
+          <Text style={[styles.headerSub, mode === "voice" && styles.voiceHeaderSub]}>
             {language} · {level} · {topic}
           </Text>
         </View>
@@ -701,6 +701,7 @@ const styles = StyleSheet.create({
   headerName: { fontSize: 17, fontWeight: "800", color: "#18324d" },
   headerSub: { fontSize: 12, color: "#718096", marginTop: 2 },
   voiceHeaderName: { color: "#f3f8ff" },
+  voiceHeaderSub: { color: "#a9bfd5" },
   smallButton: {
     backgroundColor: "#dbe7ff",
     borderRadius: 14,
