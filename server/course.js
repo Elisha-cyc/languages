@@ -208,6 +208,18 @@ async function generateLessonContent({ language, nativeLanguage, level, topic, h
   return lesson;
 }
 
+async function findCourseContentForAttempt({ lessonId, language, level, nativeLanguage }) {
+  const { data, error } = await supabase.from("course_lesson_content")
+    .select("lesson_id")
+    .eq("lesson_id", Number(lessonId))
+    .eq("language", language)
+    .eq("level", level)
+    .eq("native_language", nativeLanguage || "English")
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 async function saveVocabulary(userId, language, lessonId, vocabulary) {
   const rows = vocabulary.map((item) => ({
     user_id: userId, language, term: item.term, meaning: item.meaning,
@@ -414,14 +426,9 @@ router.post("/attempt", async (req, res) => {
     return res.status(400).json({ error: "The practice attempt is incomplete or invalid." });
   }
   try {
-    const { data: lesson, error: lessonError } = await supabase.from("course_lesson_content")
-      .select("lesson_id")
-      .eq("lesson_id", Number(lessonId))
-      .eq("language", language)
-      .eq("level", level)
-      .eq("native_language", req.user.nativeLanguage || "English")
-      .maybeSingle();
-    if (lessonError) throw lessonError;
+    const lesson = await findCourseContentForAttempt({
+      lessonId, language, level, nativeLanguage: req.user.nativeLanguage || "English",
+    });
     if (!lesson) return res.status(404).json({ error: "That course lesson was not found." });
 
     const { error: attemptError } = await supabase.from("course_attempts").insert({
@@ -690,3 +697,4 @@ router.post("/feedback", async (req, res) => {
 module.exports = router;
 module.exports.validateLesson = validateLesson;
 module.exports.parseObject = parseObject;
+module.exports.findCourseContentForAttempt = findCourseContentForAttempt;
