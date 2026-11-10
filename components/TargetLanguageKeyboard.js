@@ -171,6 +171,13 @@ export function TargetLanguageKeyboard({ language, value, onChange }) {
         {row.split(" ").map((key) => <Pressable key={key} style={styles.key} onPress={() => add(key)}><Text style={styles.keyText}>{isJapanese && katakana ? toKatakana(key) : key}</Text></Pressable>)}
       </View>)}
       <View style={styles.row}>
+        {(isPinyin || isJapanese || isKorean ? ["，", "。", "？", "！"] : [",", ".", "?", "!", "'", "-"]).map((key) => (
+          <Pressable key={key} style={styles.key} onPress={() => add(key)}>
+            <Text style={styles.keyText}>{key}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <View style={styles.row}>
         <Pressable style={[styles.key,styles.utility]} onPress={() => add(" ")}><Text style={styles.utilityText}>Space</Text></Pressable>
         <Pressable style={[styles.key,styles.utility]} onPress={backspace}><Text style={styles.utilityText}>⌫</Text></Pressable>
         <Pressable style={[styles.key,styles.utility]} onPress={() => onChange("")}><Text style={styles.utilityText}>Clear</Text></Pressable>
