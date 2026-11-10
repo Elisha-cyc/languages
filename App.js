@@ -48,6 +48,14 @@ const Tab = createBottomTabNavigator();
 
 const icon = (emoji) => () => <Text style={{ fontSize: 20 }}>{emoji}</Text>;
 
+
+const ClassroomUnitsScreen = withClassroom(UnitsScreen, "Your course units");
+const ClassroomImportScreen = withClassroom(ImportScreen, "Learn from your own material", "Bring a passage into class and study it with your teacher");
+const ClassroomPhotoScreen = withClassroom(PhotoScreen, "Learn from a photo", "Your teacher will read, explain and teach the content");
+const ClassroomBookSearchScreen = withClassroom(BookSearchScreen, "Reading classroom", "Choose a text and learn from it with guidance");
+const ClassroomSleepHomeScreen = withClassroom(SleepHomeScreen, "Revision classroom", "Choose how your teacher will help you review");
+const ClassroomSleepNightScreen = withClassroom(SleepNightScreen, "Night listening class", "Listen calmly and reinforce familiar material");
+
 const ClassroomLearnScreen = withClassroom(LearnScreen, "Today's learning");
 const ClassroomChatScreen = withClassroom(ChatScreen, "Conversation practice", "Speak with your teacher • Get corrections • Try again");
 const ClassroomChineseAcademyScreen = withClassroom(ChineseAcademyScreen, "Chinese academy");
@@ -158,7 +166,7 @@ function Root() {
           />
           <Stack.Screen
             name="Units"
-            component={UnitsScreen}
+            component={ClassroomUnitsScreen}
             options={{ title: "Units" }}
           />
           <Stack.Screen
@@ -178,22 +186,22 @@ function Root() {
           />
           <Stack.Screen
             name="Import"
-            component={ImportScreen}
+            component={ClassroomImportScreen}
             options={{ title: "Import a file" }}
           />
           <Stack.Screen
             name="Photo"
-            component={PhotoScreen}
+            component={ClassroomPhotoScreen}
             options={{ title: "Read a photo" }}
           />
           <Stack.Screen
             name="Books"
-            component={BookSearchScreen}
+            component={ClassroomBookSearchScreen}
             options={{ title: "Find a book" }}
           />
           <Stack.Screen
             name="Sleep"
-            component={SleepHomeScreen}
+            component={ClassroomSleepHomeScreen}
             options={{ title: "Sleep mode" }}
           />
           <Stack.Screen
@@ -208,7 +216,7 @@ function Root() {
           />
           <Stack.Screen
             name="SleepNight"
-            component={SleepNightScreen}
+            component={ClassroomSleepNightScreen}
             options={{ title: "Tonight" }}
           />
           <Stack.Screen
