@@ -312,7 +312,11 @@ router.post("/classroom", async (req, res) => {
   });
 
   try {
-    const raw = await completeJson(messages, 1200);
+    const classroomModel = process.env.CLASSROOM_MODEL || "openai/gpt-oss-120b";
+    const reasoningEffort = process.env.CLASSROOM_REASONING_EFFORT || "high";
+    const raw = await completeJson(messages, 1600, classroomModel, {
+      reasoning_effort: reasoningEffort,
+    });
     const data = parseObject(raw);
     const result = {
       explanation: text(data.explanation, 900),
