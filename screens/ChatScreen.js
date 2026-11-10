@@ -16,6 +16,7 @@ import { API_URL, USER_ID, NATIVE_LANGUAGE } from "../config";
 import { speak, stopSpeaking, languageCode } from "../speech";
 import { compareSpeech } from "../listen";
 import LanguagePicker from "../components/LanguagePicker";
+import { TargetLanguageKeyboard } from "../components/TargetLanguageKeyboard";
 import { useVoice } from "../voice";
 import { useQuietOnLeave } from "../useQuietOnLeave";
 import { takeTestResult } from "../testResult";
@@ -51,6 +52,7 @@ export default function ChatScreen() {
   const [persona, setPersona] = useState("");
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
+  const [showTargetKeyboard, setShowTargetKeyboard] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [readAloud, setReadAloud] = useState(true);
@@ -676,34 +678,58 @@ export default function ChatScreen() {
           </View>
         </View>
       ) : (
-        <View style={styles.inputBar}>
-          {voiceInput && (
+        <>
+          <View style={styles.inputBar}>
+            {voiceInput && (
+              <Pressable
+                style={[styles.mic, listening === "dictate" && styles.micOn]}
+                onPress={dictate}
+                accessibilityRole="button"
+                accessibilityLabel="Dictate a message"
+              >
+                <Text style={styles.micText}>🎤</Text>
+              </Pressable>
+            )}
+            <TextInput
+              style={[
+                styles.textInput,
+                ["Arabic", "Hebrew"].includes(language) && styles.rtlInput,
+              ]}
+              lang={languageCode(language) || "en"}
+              accessibilityLabel={`Write your message in ${language}`}
+              value={input}
+              onChangeText={setInput}
+              placeholder={`Write in ${language}...`}
+              maxLength={500}
+              editable={!showTargetKeyboard}
+              showSoftInputOnFocus={!showTargetKeyboard}
+              returnKeyType="send"
+              onSubmitEditing={() => sendText(input)}
+            />
             <Pressable
-              style={[styles.mic, listening === "dictate" && styles.micOn]}
-              onPress={dictate}
+              style={[styles.keyboardToggle, showTargetKeyboard && styles.keyboardToggleOn]}
+              onPress={() => setShowTargetKeyboard((visible) => !visible)}
+              accessibilityRole="button"
+              accessibilityLabel={showTargetKeyboard ? "Switch to phone keyboard" : `Show ${language} in-app keyboard`}
             >
-              <Text style={styles.micText}>🎤</Text>
+              <Text style={[styles.keyboardToggleText, showTargetKeyboard && styles.keyboardToggleTextOn]}>⌨</Text>
             </Pressable>
+            <Pressable
+              style={[styles.send, (loading || !input.trim()) && styles.disabled]}
+              disabled={loading || !input.trim()}
+              onPress={() => sendText(input)}
+            >
+              <Text style={styles.sendText}>Send</Text>
+            </Pressable>
+          </View>
+          {showTargetKeyboard && (
+            <TargetLanguageKeyboard
+              language={language}
+              value={input}
+              onChange={setInput}
+            />
           )}
-          <TextInput
-            style={styles.textInput}
-            lang={languageCode(language) || "en"}
-            accessibilityLabel={`Write your message in ${language}`}
-            value={input}
-            onChangeText={setInput}
-            placeholder={`Write in ${language}...`}
-            maxLength={500}
-            returnKeyType="send"
-            onSubmitEditing={() => sendText(input)}
-          />
-          <Pressable
-            style={[styles.send, (loading || !input.trim()) && styles.disabled]}
-            disabled={loading || !input.trim()}
-            onPress={() => sendText(input)}
-          >
-            <Text style={styles.sendText}>Send</Text>
-          </Pressable>
-        </View>
+        </>
       )}
     </KeyboardAvoidingView>
   );
@@ -873,6 +899,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     fontSize: 16,
   },
+  rtlInput: { textAlign: "right" },
+  keyboardToggle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#edf1f8",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 6,
+    borderWidth: 1,
+    borderColor: "#d5d9e0",
+  },
+  keyboardToggleOn: { backgroundColor: "#dbe7ff", borderColor: "#9dbbf0" },
+  keyboardToggleText: { color: "#52647d", fontSize: 20 },
+  keyboardToggleTextOn: { color: "#245bb3" },
   send: {
     backgroundColor: "#2a6fdb",
     borderRadius: 20,
