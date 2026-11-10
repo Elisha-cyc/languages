@@ -72,7 +72,6 @@ const ClassroomHanziLessonScreen = withClassroom(HanziLessonScreen, "Character l
 const ClassroomHanziStrokesScreen = withClassroom(HanziStrokesScreen, "Stroke-order lesson", "Watch each stroke • Follow the correct order");
 const ClassroomHanziWriteScreen = withClassroom(HanziWriteScreen, "Writing practice", "Your teacher will guide your writing");
 const ClassroomHanziTestScreen = withClassroom(HanziTestScreen, "Character assessment", "Show what you can recognise and write");
-const ClassroomTeacherScreen = withClassroom(TeacherScreen, "Your AI teacher", "Watch the board • Listen • Speak with your teacher");
 const ClassroomPinyinTeacherScreen = withClassroom(PinyinTeacherScreen, "Pinyin and tone classroom", "Hear the tone • See the pitch • Repeat");
 const ClassroomCourseLessonScreen = withClassroom(CourseLessonScreen, "Complete language lesson", "Learn • Practise • Check your understanding");
 const ClassroomPlacementScreen = withClassroom(PlacementScreen, "Level assessment", "Your teacher is finding your starting point");
@@ -261,7 +260,7 @@ function Root() {
           />
           <Stack.Screen
             name="Teacher"
-            component={ClassroomTeacherScreen}
+            component={TeacherScreen}
             options={{ title: "Learn with a teacher" }}
           />
           <Stack.Screen
