@@ -41,11 +41,34 @@ import CourseLessonScreen from "./screens/CourseLessonScreen";
 import PlacementScreen from "./screens/PlacementScreen";
 import ProgressScreen from "./screens/ProgressScreen";
 import { IntroAnimation, LoadingAnimation } from "./components/AppAnimation";
+import withClassroom from "./components/withClassroom";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 const icon = (emoji) => () => <Text style={{ fontSize: 20 }}>{emoji}</Text>;
+
+const ClassroomLearnScreen = withClassroom(LearnScreen, "Today's learning");
+const ClassroomChatScreen = withClassroom(ChatScreen, "Conversation practice", "Speak with your teacher • Get corrections • Try again");
+const ClassroomChineseAcademyScreen = withClassroom(ChineseAcademyScreen, "Chinese academy");
+const ClassroomLessonsScreen = withClassroom(LessonsScreen, "Lesson library");
+const ClassroomFlashcardScreen = withClassroom(FlashcardScreen, "Flashcard practice", "Recall • Reveal • Review");
+const ClassroomQuizScreen = withClassroom(QuizScreen, "Knowledge check", "Show what you understand");
+const ClassroomSleepStudyScreen = withClassroom(SleepStudyScreen, "Guided revision", "Listen again • Remember • Recall");
+const ClassroomSleepEveningScreen = withClassroom(SleepEveningScreen, "Evening review", "Your teacher is checking today's learning");
+const ClassroomSleepMorningScreen = withClassroom(SleepMorningScreen, "Morning recall", "Bring yesterday's learning back to mind");
+const ClassroomSpeechCheckScreen = withClassroom(SpeechCheckScreen, "Pronunciation laboratory", "Listen to the model • Repeat clearly");
+const ClassroomTutorScreen = withClassroom(TutorScreen, "Ask your teacher", "Ask questions • Explore examples • Learn");
+const ClassroomHanziHomeScreen = withClassroom(HanziHomeScreen, "Character classroom");
+const ClassroomHanziLessonScreen = withClassroom(HanziLessonScreen, "Character lesson", "Understand the character • Read • Remember");
+const ClassroomHanziStrokesScreen = withClassroom(HanziStrokesScreen, "Stroke-order lesson", "Watch each stroke • Follow the correct order");
+const ClassroomHanziWriteScreen = withClassroom(HanziWriteScreen, "Writing practice", "Your teacher will guide your writing");
+const ClassroomHanziTestScreen = withClassroom(HanziTestScreen, "Character assessment", "Show what you can recognise and write");
+const ClassroomTeacherScreen = withClassroom(TeacherScreen, "Your AI teacher", "Watch the board • Listen • Speak with your teacher");
+const ClassroomPinyinTeacherScreen = withClassroom(PinyinTeacherScreen, "Pinyin and tone classroom", "Hear the tone • See the pitch • Repeat");
+const ClassroomCourseLessonScreen = withClassroom(CourseLessonScreen, "Complete language lesson", "Learn • Practise • Check your understanding");
+const ClassroomPlacementScreen = withClassroom(PlacementScreen, "Level assessment", "Your teacher is finding your starting point");
+
 
 function MainTabs() {
   return (
@@ -74,12 +97,12 @@ function MainTabs() {
       />
       <Tab.Screen
         name="LearnTab"
-        component={LearnScreen}
+        component={ClassroomLearnScreen}
         options={{ title: "Learn", tabBarIcon: icon("📚") }}
       />
       <Tab.Screen
         name="ChatTab"
-        component={ChatScreen}
+        component={ClassroomChatScreen}
         options={{ title: "Chat", tabBarIcon: icon("💬") }}
       />
       <Tab.Screen
@@ -120,7 +143,7 @@ function Root() {
           />
           <Stack.Screen
             name="ChineseAcademy"
-            component={ChineseAcademyScreen}
+            component={ClassroomChineseAcademyScreen}
             options={{ title: "Chinese Academy" }}
           />
           <Stack.Screen
@@ -140,17 +163,17 @@ function Root() {
           />
           <Stack.Screen
             name="Lessons"
-            component={LessonsScreen}
+            component={ClassroomLessonsScreen}
             options={{ title: "Lessons" }}
           />
           <Stack.Screen
             name="Flashcards"
-            component={FlashcardScreen}
+            component={ClassroomFlashcardScreen}
             options={{ title: "Flashcards" }}
           />
           <Stack.Screen
             name="Quiz"
-            component={QuizScreen}
+            component={ClassroomQuizScreen}
             options={{ title: "Quiz" }}
           />
           <Stack.Screen
@@ -175,12 +198,12 @@ function Root() {
           />
           <Stack.Screen
             name="SleepStudy"
-            component={SleepStudyScreen}
+            component={ClassroomSleepStudyScreen}
             options={{ title: "Review" }}
           />
           <Stack.Screen
             name="SleepEvening"
-            component={SleepEveningScreen}
+            component={ClassroomSleepEveningScreen}
             options={{ title: "Evening quiz" }}
           />
           <Stack.Screen
@@ -190,52 +213,52 @@ function Root() {
           />
           <Stack.Screen
             name="SleepMorning"
-            component={SleepMorningScreen}
+            component={ClassroomSleepMorningScreen}
             options={{ title: "Morning test" }}
           />
           <Stack.Screen
             name="SpeechCheck"
-            component={SpeechCheckScreen}
+            component={ClassroomSpeechCheckScreen}
             options={{ title: "Speech check" }}
           />
           <Stack.Screen
             name="Tutor"
-            component={TutorScreen}
+            component={ClassroomTutorScreen}
             options={{ title: "AI Tutor" }}
           />
           <Stack.Screen
             name="HanziHome"
-            component={HanziHomeScreen}
+            component={ClassroomHanziHomeScreen}
             options={{ title: "Chinese characters" }}
           />
           <Stack.Screen
             name="HanziLesson"
-            component={HanziLessonScreen}
+            component={ClassroomHanziLessonScreen}
             options={{ title: "Learn characters" }}
           />
           <Stack.Screen
             name="HanziStrokes"
-            component={HanziStrokesScreen}
+            component={ClassroomHanziStrokesScreen}
             options={{ title: "How to write" }}
           />
           <Stack.Screen
             name="HanziWrite"
-            component={HanziWriteScreen}
+            component={ClassroomHanziWriteScreen}
             options={{ title: "Write" }}
           />
           <Stack.Screen
             name="HanziTest"
-            component={HanziTestScreen}
+            component={ClassroomHanziTestScreen}
             options={{ title: "Test" }}
           />
           <Stack.Screen
             name="Teacher"
-            component={TeacherScreen}
+            component={ClassroomTeacherScreen}
             options={{ title: "Learn with a teacher" }}
           />
           <Stack.Screen
             name="PinyinTeacher"
-            component={PinyinTeacherScreen}
+            component={ClassroomPinyinTeacherScreen}
             options={{ title: "Chinese pinyin teacher" }}
           />
           <Stack.Screen
@@ -245,12 +268,12 @@ function Root() {
           />
           <Stack.Screen
             name="Placement"
-            component={PlacementScreen}
+            component={ClassroomPlacementScreen}
             options={{ title: "Find your level" }}
           />
           <Stack.Screen
             name="CourseLesson"
-            component={CourseLessonScreen}
+            component={ClassroomCourseLessonScreen}
             options={{ title: "Complete language lesson" }}
           />
         </Stack.Navigator>
