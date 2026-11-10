@@ -141,7 +141,7 @@ async function complete(messages, maxTokens, model = MODEL, options = {}) {
       ...options,
     };
 
-    if (process.env.REASONING_EFFORT) {
+    if (process.env.REASONING_EFFORT && !body.reasoning_effort) {
       body.reasoning_effort = process.env.REASONING_EFFORT;
     }
 
