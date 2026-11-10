@@ -162,6 +162,10 @@ export default function TeacherScreen() {
     setClassroomMessages([]);
     setClassroomInput("");
     setLearnerProfile(null);
+    // Keep speech unlock and recorder preparation inside the original user tap.
+    unlockSpeech();
+    prepareRecorder();
+    setClassroomError(null);
     try {
       const profileResponse = await fetch(`${API_URL}/teacher/profile?language=${encodeURIComponent(language)}&level=${encodeURIComponent(level)}`);
       const profileData = await profileResponse.json();
@@ -169,9 +173,6 @@ export default function TeacherScreen() {
     } catch (profileError) {
       console.warn("Could not load teacher learning profile:", profileError.message);
     }
-    setClassroomError(null);
-    unlockSpeech();
-    prepareRecorder();
     setError(null);
     setPhase("loading");
 
