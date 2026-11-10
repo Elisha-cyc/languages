@@ -205,8 +205,9 @@ router.post("/progress", async (req, res) => {
         averageScore: Math.round(scores.reduce((sum, item) => sum + item.score, 0) / scores.length),
         needsReview: weak.slice(0, 5), strengths: strong.slice(0, 5) },
     ].slice(-8);
+    const masteredNow = new Set(strong);
     const needsReview = [...new Set([
-      ...(Array.isArray(previous.needsReview) ? previous.needsReview : []),
+      ...(Array.isArray(previous.needsReview) ? previous.needsReview : []).filter((phrase) => !masteredNow.has(phrase)),
       ...weak,
     ])].slice(-20);
     const strengths = [...new Set([
