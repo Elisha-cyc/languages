@@ -41,6 +41,7 @@ export default function DashboardScreen({ navigation }) {
         <Text style={styles.sectionCaption}>Everything you need, in one place</Text>
       </View>
       <View style={styles.quickGrid}>
+        <QuickAction icon="🎓" title="AI classroom" subtitle="Learn with your teacher" onPress={() => navigation.navigate("Teacher")} />
         <QuickAction icon="🎙️" title="AI speaking" subtitle="Talk naturally" onPress={() => navigation.navigate("ChatTab")} />
         <QuickAction icon="🎓" title="My courses" subtitle="Follow your path" onPress={() => navigation.navigate("Languages")} />
         <QuickAction icon="✍️" title="Writing" subtitle="Characters & text" onPress={() => navigation.navigate("HanziHome")} />
