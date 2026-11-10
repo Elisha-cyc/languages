@@ -643,7 +643,11 @@ export default function TeacherScreen() {
             <Text style={styles.setupHeroTitle}>Welcome to your classroom</Text>
             <Text style={styles.setupHeroText}>Meet your AI teacher, learn on the board, speak aloud and get guided feedback as you go.</Text>
           </View>
-          <View style={styles.setupTeacher}><Text style={styles.setupTeacherEmoji}>👩‍🏫</Text><View style={styles.setupTeacherBase} /></View>
+          <View style={styles.setupTeacher}>
+            <View style={styles.setupHair}><View style={styles.setupFace}><View style={styles.faceEyes}><View style={styles.faceEye} /><View style={styles.faceEye} /></View><View style={styles.faceSmile} /></View></View>
+            <View style={styles.setupTorso}><View style={styles.setupArmLeft} /><View style={styles.setupArmRight} /></View>
+            <View style={styles.setupTeacherBase} />
+          </View>
           <View style={styles.setupBoard}><Text style={styles.setupBoardLabel}>TODAY'S GOAL</Text><Text style={styles.setupBoardText}>Listen · Learn · Speak</Text></View>
         </View>
         <Text style={styles.note}>
@@ -793,8 +797,13 @@ export default function TeacherScreen() {
             <Text style={styles.sceneBoardSub}>{step.pronunciation || step.meaning}</Text>
           </View>
           <View style={styles.teacherFigure}>
-            <View style={styles.teacherHead}><Text style={styles.teacherFace}>🙂</Text></View>
-            <View style={styles.teacherBody}><Text style={styles.teacherCoat}>👩‍🏫</Text></View>
+            <View style={styles.teacherHair}>
+              <View style={styles.teacherHead}>
+                <View style={styles.teacherEyes}><View style={styles.teacherEye} /><View style={styles.teacherEye} /></View>
+                <View style={styles.teacherSmile} />
+              </View>
+            </View>
+            <View style={styles.teacherBody}><View style={styles.teacherShirt}><Text style={styles.teacherBadge}>✦</Text></View></View>
             <View style={styles.teacherArm} />
           </View>
           <View style={styles.sceneDesk}><Text style={styles.sceneDeskText}>YOUR TEACHER · {lesson.teacher}</Text></View>
@@ -1040,7 +1049,14 @@ const styles = StyleSheet.create({
   setupHeroTitle: { color: "#fff", fontSize: 27, lineHeight: 32, fontWeight: "900", marginTop: 10 },
   setupHeroText: { color: "#d3e3ed", fontSize: 13, lineHeight: 19, marginTop: 8 },
   setupTeacher: { position: "absolute", right: 14, top: 55, width: 100, height: 125, alignItems: "center", justifyContent: "center", backgroundColor: "#d8f1f4", borderRadius: 50, borderWidth: 5, borderColor: "#ffffff" },
-  setupTeacherEmoji: { fontSize: 55 },
+  setupHair: { width: 62, height: 64, borderRadius: 31, backgroundColor: "#49352f", alignItems: "center", justifyContent: "flex-end", zIndex: 2 },
+  setupFace: { width: 47, height: 49, borderRadius: 24, backgroundColor: "#e9b58f", marginBottom: 1, alignItems: "center", justifyContent: "center" },
+  faceEyes: { flexDirection: "row", gap: 12, marginTop: 7 },
+  faceEye: { width: 4, height: 4, borderRadius: 2, backgroundColor: "#392b2a" },
+  faceSmile: { width: 12, height: 6, borderBottomWidth: 2, borderColor: "#8c4e45", borderRadius: 8, marginTop: 5 },
+  setupTorso: { position: "absolute", bottom: 0, width: 82, height: 66, borderTopLeftRadius: 28, borderTopRightRadius: 28, backgroundColor: "#f5f7f7", zIndex: 1 },
+  setupArmLeft: { position: "absolute", left: -9, top: 12, width: 20, height: 48, borderRadius: 10, backgroundColor: "#e9b58f", transform: [{ rotate: "15deg" }] },
+  setupArmRight: { position: "absolute", right: -9, top: 12, width: 20, height: 48, borderRadius: 10, backgroundColor: "#e9b58f", transform: [{ rotate: "-15deg" }] },
   setupTeacherBase: { position: "absolute", bottom: -18, width: 68, height: 24, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: "#e4a36f" },
   setupBoard: { position: "absolute", left: 20, right: 20, bottom: 18, backgroundColor: "#245c61", borderWidth: 5, borderColor: "#bd8c5e", borderRadius: 10, padding: 10 },
   setupBoardLabel: { color: "#c3e8dc", fontSize: 9, fontWeight: "900", letterSpacing: 1 },
@@ -1059,10 +1075,14 @@ const styles = StyleSheet.create({
   sceneBoardMain: { color: "#fff", fontSize: 22, fontWeight: "900", marginTop: 8 },
   sceneBoardSub: { color: "#d6eee3", fontSize: 13, marginTop: 4 },
   teacherFigure: { position: "absolute", left: 17, bottom: 24, width: 75, height: 115, alignItems: "center" },
-  teacherHead: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#f1c49d", alignItems: "center", justifyContent: "center", borderWidth: 3, borderColor: "#fff" },
-  teacherFace: { fontSize: 27 },
-  teacherBody: { width: 63, height: 67, marginTop: -1, borderTopLeftRadius: 18, borderTopRightRadius: 18, backgroundColor: "#d5edf0", alignItems: "center", justifyContent: "center" },
-  teacherCoat: { fontSize: 33 },
+  teacherHair: { width: 57, height: 57, borderRadius: 29, backgroundColor: "#49352f", alignItems: "center", justifyContent: "flex-end", zIndex: 2 },
+  teacherHead: { width: 43, height: 45, borderRadius: 22, backgroundColor: "#e9b58f", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#fff" },
+  teacherEyes: { flexDirection: "row", gap: 11, marginTop: 8 },
+  teacherEye: { width: 4, height: 4, borderRadius: 2, backgroundColor: "#392b2a" },
+  teacherSmile: { width: 11, height: 6, borderBottomWidth: 2, borderColor: "#8c4e45", borderRadius: 8, marginTop: 5 },
+  teacherBody: { width: 63, height: 67, marginTop: -1, borderTopLeftRadius: 18, borderTopRightRadius: 18, backgroundColor: "#f7f8f8", alignItems: "center", justifyContent: "center" },
+  teacherShirt: { width: 23, height: 52, backgroundColor: "#2b7890", alignItems: "center", paddingTop: 8 },
+  teacherBadge: { color: "#fff", fontSize: 12 },
   teacherArm: { position: "absolute", right: -2, top: 55, width: 31, height: 9, borderRadius: 5, backgroundColor: "#f1c49d", transform: [{ rotate: "-35deg" }] },
   sceneDesk: { position: "absolute", bottom: 0, left: 0, right: 0, height: 19, backgroundColor: "#b88a60", alignItems: "center", justifyContent: "center" },
   sceneDeskText: { color: "#fff", fontSize: 8, fontWeight: "900", letterSpacing: 1 },
