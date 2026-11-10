@@ -7,6 +7,7 @@
 const express = require("express");
 const { PERSONAS } = require("./ai");
 const { completeJson } = require("./aijson");
+const supabase = require("./supabase");
 const { LANGUAGES, PRONUNCIATION_GUIDE } = require("./curriculum");
 const { isChinese, scopeFor } = require("./hsk");
 
@@ -146,6 +147,91 @@ function checkLesson(data) {
   };
 }
 
+
+async function loadLearnerProfile(userId, language, level) {
+  const { data, error } = await supabase
+    .from("teacher_learning_profiles")
+    .select("profile, updated_at")
+    .eq("user_id", userId)
+    .eq("language", language)
+    .eq("level", level)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.profile && typeof data.profile === "object" ? data.profile : {
+    lessonCount: 0, strengths: [], needsReview: [], recentLessons: [],
+  };
+}
+
+router.get("/profile", async (req, res) => {
+  const userId = req.user && req.user.id;
+  const { language, level } = req.query || {};
+  if (!userId) return res.status(401).json({ error: "Please log in." });
+  if (!LANGUAGES.includes(language) || !Object.prototype.hasOwnProperty.call(LEVELS, level)) {
+    return res.status(400).json({ error: "Choose a supported language and level." });
+  }
+  try {
+    const profile = await loadLearnerProfile(userId, language, level);
+    res.json({ profile });
+  } catch (err) {
+    console.error("Teacher profile load failed:", String(err.message).slice(0, 250));
+    res.status(502).json({ error: "Your learning profile is temporarily unavailable." });
+  }
+});
+
+router.post("/progress", async (req, res) => {
+  const userId = req.user && req.user.id;
+  if (!userId) return res.status(401).json({ error: "Please log in." });
+  const { language, level, topic, results } = req.body || {};
+  if (!LANGUAGES.includes(language) || !Object.prototype.hasOwnProperty.call(LEVELS, level)) {
+    return res.status(400).json({ error: "Choose a supported language and level." });
+  }
+  if (!Array.isArray(results) || results.length < 1 || results.length > 8 ||
+      !results.every((item) => item && typeof item.phrase === "string" &&
+        item.phrase.length <= 200 && Number.isFinite(item.score) &&
+        item.score >= 0 && item.score <= 100)) {
+    return res.status(400).json({ error: "Lesson results are not valid." });
+  }
+  try {
+    const previous = await loadLearnerProfile(userId, language, level);
+    const scores = results.map((item) => ({
+      phrase: text(item.phrase, 200),
+      score: Math.round(item.score),
+    }));
+    const weak = scores.filter((item) => item.score < 80).map((item) => item.phrase);
+    const strong = scores.filter((item) => item.score >= 80).map((item) => item.phrase);
+    const recentLessons = [
+      ...(Array.isArray(previous.recentLessons) ? previous.recentLessons : []),
+      { topic: text(topic, 100) || "General practice", completedAt: new Date().toISOString(),
+        averageScore: Math.round(scores.reduce((sum, item) => sum + item.score, 0) / scores.length),
+        needsReview: weak.slice(0, 5), strengths: strong.slice(0, 5) },
+    ].slice(-8);
+    const masteredNow = new Set(strong);
+    const needsReview = [...new Set([
+      ...(Array.isArray(previous.needsReview) ? previous.needsReview : []).filter((phrase) => !masteredNow.has(phrase)),
+      ...weak,
+    ])].slice(-20);
+    const strengths = [...new Set([
+      ...(Array.isArray(previous.strengths) ? previous.strengths : []),
+      ...strong,
+    ])].slice(-20);
+    const profile = {
+      lessonCount: Math.max(0, Number(previous.lessonCount) || 0) + 1,
+      strengths, needsReview, recentLessons,
+      lastTopic: text(topic, 100) || "General practice",
+      lastAverageScore: recentLessons[recentLessons.length - 1].averageScore,
+      updatedAt: new Date().toISOString(),
+    };
+    const { error } = await supabase.from("teacher_learning_profiles").upsert({
+      user_id: userId, language, level, profile, updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id,language,level" });
+    if (error) throw error;
+    res.json({ saved: true, profile });
+  } catch (err) {
+    console.error("Teacher progress save failed:", String(err.message).slice(0, 250));
+    res.status(502).json({ error: "Your lesson finished, but progress could not be saved." });
+  }
+});
+
 router.post("/lesson", async (req, res) => {
   const { language, level, topic } = req.body || {};
   const userId = req.user && req.user.id;
@@ -177,6 +263,12 @@ router.post("/lesson", async (req, res) => {
   const nativeLanguage = req.user.nativeLanguage || "English";
   const teacher = PERSONAS[language] || "Alex";
   const guide = PRONUNCIATION_GUIDE[language];
+  let learnerProfile = { lessonCount: 0, strengths: [], needsReview: [], recentLessons: [] };
+  try {
+    learnerProfile = await loadLearnerProfile(userId, language, level);
+  } catch (profileError) {
+    console.warn("Teacher is starting without saved learner memory:", String(profileError.message).slice(0, 180));
+  }
   const chineseLanguage = isChineseLanguage;
   const hsk = isChineseLanguage ? scopeFor(level) : null;
   const topicOffset = hsk
@@ -197,6 +289,8 @@ router.post("/lesson", async (req, res) => {
   const system = [
     `You are ${teacher}, a warm, patient, encouraging ${language} teacher, teaching a student whose language is ${nativeLanguage}.`,
     "You are an AI playing a teacher, and you say so honestly if asked.",
+    learnerProfile.lessonCount ? `Learner's persistent profile: ${learnerProfile.lessonCount} completed teacher lessons. Strengths: ${(learnerProfile.strengths || []).slice(-8).join("; ") || "not established"}. Phrases needing review: ${(learnerProfile.needsReview || []).slice(-8).join("; ") || "none recorded"}. Last topic: ${learnerProfile.lastTopic || "none"}.` : "This is a new learner profile. Establish strengths and needs through evidence; do not assume prior knowledge.",
+    "Use the learner profile to revisit weak areas naturally, avoid drilling already mastered phrases unnecessarily, and introduce new content at an appropriate pace. Do not treat a phrase score as proof of broad language mastery.",
     "Return one valid JSON object only, with no markdown.",
   ].join("\n");
 
@@ -286,9 +380,17 @@ router.post("/classroom", async (req, res) => {
   const safeTopic = text(topic, 100) || "Everyday communication";
   const safePhrase = text(currentPhrase, 200);
   const safeMeaning = text(currentMeaning, 200);
+  let learnerProfile = { lessonCount: 0, strengths: [], needsReview: [], recentLessons: [] };
+  try {
+    learnerProfile = await loadLearnerProfile(userId, language, level);
+  } catch (profileError) {
+    console.warn("Classroom continuing without saved learner memory:", String(profileError.message).slice(0, 180));
+  }
   const system = [
     `You are ${teacher}, a warm, highly capable ${language} language teacher in a one-to-one classroom. The learner's explanation language is ${nativeLanguage}; their level is ${level}.`,
     "You are an AI teacher and must be honest if asked. Be thoughtful, accurate, patient, curious, and pedagogically skilled. Do not pretend to be human.",
+    learnerProfile.lessonCount ? `Persistent learner evidence: ${learnerProfile.lessonCount} completed lessons; strengths: ${(learnerProfile.strengths || []).slice(-8).join("; ") || "not established"}; needs review: ${(learnerProfile.needsReview || []).slice(-8).join("; ") || "none recorded"}; recent lesson topics: ${(learnerProfile.recentLessons || []).slice(-4).map((item) => item.topic).join(", ") || "none"}.` : "No previous lesson evidence is stored yet; assess gently and build an evidence-based learner profile.",
+    "Make a teaching decision, not just a reply: decide whether to clarify, model, ask the learner to try, revisit a weak area, or extend the topic. Explain the reason for the next practice task. Never claim mastery from a single correct response.",
     `The current class topic is ${safeTopic}. Match grammar, vocabulary, speed, examples, and task difficulty to the learner's level.`,
     "Answer the learner's actual question first. If they ask why something is said, explain the rule in simple steps and give a natural example. If they are confused, try a different explanation or analogy rather than repeating the same wording. If they make a mistake, correct it kindly, show the corrected form, and explain the reason. Never invent a mistake.",
     `Write the teaching explanation in ${nativeLanguage}. Provide one natural model sentence or phrase in ${language}, then its natural ${nativeLanguage} translation. Keep the model suitable for the learner's level.`,

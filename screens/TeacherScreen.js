@@ -99,6 +99,7 @@ export default function TeacherScreen() {
   const [classroomMessages, setClassroomMessages] = useState([]);
   const [classroomBusy, setClassroomBusy] = useState(false);
   const [classroomError, setClassroomError] = useState(null);
+  const [learnerProfile, setLearnerProfile] = useState(null);
 
   const voice = useVoice(language);
   const run = useRef(0); // numbers each teacher sequence so an old one can be dropped
@@ -160,9 +161,18 @@ export default function TeacherScreen() {
   async function start() {
     setClassroomMessages([]);
     setClassroomInput("");
-    setClassroomError(null);
+    setLearnerProfile(null);
+    // Keep speech unlock and recorder preparation inside the original user tap.
     unlockSpeech();
     prepareRecorder();
+    setClassroomError(null);
+    try {
+      const profileResponse = await fetch(`${API_URL}/teacher/profile?language=${encodeURIComponent(language)}&level=${encodeURIComponent(level)}`);
+      const profileData = await profileResponse.json();
+      if (profileResponse.ok) setLearnerProfile(profileData.profile || null);
+    } catch (profileError) {
+      console.warn("Could not load teacher learning profile:", profileError.message);
+    }
     setError(null);
     setPhase("loading");
 
@@ -457,6 +467,22 @@ export default function TeacherScreen() {
     stopSpeaking();
     voice.cancel();
     setPhase("done");
+    // Save evidence from this lesson so the teacher can plan the next one.
+    const evidence = data.steps.map((step, index) => ({
+      phrase: step.phrase,
+      score: results[index]?.best || 0,
+    })).filter((item) => item.score > 0);
+    if (evidence.length) {
+      fetch(`${API_URL}/teacher/progress`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language, level, topic: data.topic || topic, results: evidence }),
+      }).then(async (response) => {
+        const saved = await response.json();
+        if (response.ok && saved.profile) setLearnerProfile(saved.profile);
+        else if (!response.ok) console.warn("Teacher progress was not saved:", saved.error);
+      }).catch((saveError) => console.warn("Teacher progress save failed:", saveError.message));
+    }
     if (data.closing) {
       await speakAndWait(data.closing, nativeName);
       if (id !== run.current) return;
@@ -873,6 +899,14 @@ export default function TeacherScreen() {
 
       <View style={styles.classroomPanel}>
         <Text style={styles.classroomPanelTitle}>Ask your teacher</Text>
+        {learnerProfile ? (
+          <View style={styles.profileCard}>
+            <Text style={styles.profileTitle}>Your teacher's learning notes</Text>
+            <Text style={styles.classroomHint}>Completed classroom lessons: {learnerProfile.lessonCount || 0}</Text>
+            {learnerProfile.lastTopic ? <Text style={styles.classroomHint}>Last studied: {learnerProfile.lastTopic}</Text> : null}
+            {learnerProfile.needsReview?.length ? <Text style={styles.classroomHint}>To revisit: {learnerProfile.needsReview.slice(-3).join(" · ")}</Text> : <Text style={styles.classroomHint}>Your teacher is still gathering evidence about what you know.</Text>}
+          </View>
+        ) : null}
         <Text style={styles.classroomHint}>Ask why a phrase is used, request another example, or tell your teacher what you do not understand.</Text>
         {classroomMessages.slice(-6).map((message, messageIndex) => (
           <View key={messageIndex} style={[styles.classroomBubble, message.role === "user" ? styles.studentBubble : styles.teacherBubble]}>
@@ -978,6 +1012,8 @@ const styles = StyleSheet.create({
   classroomEyebrow: { color: "#a9d9e8", fontSize: 10, fontWeight: "800", letterSpacing: 1 },
   classroomTitle: { color: "#fff", fontSize: 19, fontWeight: "800", marginTop: 3 },
   boardLabel: { color: "#68798c", fontSize: 11, fontWeight: "800", letterSpacing: 1, marginTop: 3 },
+  profileCard: { backgroundColor: "#eaf1f8", borderRadius: 12, padding: 12, marginBottom: 12 },
+  profileTitle: { color: "#17324d", fontWeight: "800", marginBottom: 4 },
   classroomPanel: { backgroundColor: "#fff", borderRadius: 16, padding: 15, marginTop: 16, borderWidth: 1, borderColor: "#d9dee7" },
   classroomPanelTitle: { fontSize: 19, fontWeight: "800", color: "#18324d" },
   classroomHint: { color: "#667085", fontSize: 13, lineHeight: 19, marginTop: 5 },
