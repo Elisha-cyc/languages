@@ -7,6 +7,7 @@
 const express = require("express");
 const { PERSONAS } = require("./ai");
 const { completeJson } = require("./aijson");
+const supabase = require("./supabase");
 const { LANGUAGES, PRONUNCIATION_GUIDE } = require("./curriculum");
 const { isChinese, scopeFor } = require("./hsk");
 
