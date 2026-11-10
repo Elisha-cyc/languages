@@ -272,47 +272,59 @@ export default function TeacherScreen() {
       });
     }
 
-    // No pronunciation service: transcribe the recording and compare the words
-    if (!azureRef.current) {
-      setStage("checking");
-      let text;
-      try {
-        const form = new FormData();
-        form.append("audio", blob, "speech.wav");
-        form.append("language", language);
-        const res = await fetch(`${API_URL}/speech/transcribe`, {
-          method: "POST",
-          body: form,
-        });
-        if (res.status === 422) {
-          if (id !== run.current) return;
-          return giveFeedback(data, stepIndex, attempt, id, {
-            none: true,
-            score: 0,
-            words: [],
-          });
-        }
-        if (!res.ok) throw new Error("transcribe failed");
-        text = (await res.json()).text;
-      } catch (e) {
+    // Whisper is the reliable word-recognition fallback when Azure
+    // pronunciation assessment is unavailable or does not recognise a language.
+    // Azure's TTS voice list is broader than its pronunciation-assessment support.
+    async function compareWithTranscription() {
+      const form = new FormData();
+      form.append("language", language);
+      form.append("audio", blob, "speech.wav");
+      const res = await fetch(`${API_URL}/speech/transcribe`, {
+        method: "POST",
+        body: form,
+      });
+      if (res.status === 422) {
         if (id !== run.current) return;
-        setError(
-          "I could not check what you said. Tap the microphone to try again.",
-        );
-        setStage("ready");
-        return;
+        return giveFeedback(data, stepIndex, attempt, id, {
+          none: true,
+          score: 0,
+          words: [],
+        });
+      }
+      const transcriptData = await res.json();
+      if (!res.ok) {
+        throw new Error(transcriptData.error || "Speech recognition failed.");
       }
       if (id !== run.current) return;
-      const check = compareSpeech(step.phrase, text, language);
+      const transcript = String(transcriptData.text || "").trim();
+      if (!transcript) {
+        return giveFeedback(data, stepIndex, attempt, id, {
+          none: true,
+          score: 0,
+          words: [],
+        });
+      }
+      const check = compareSpeech(step.phrase, transcript, language);
       return giveFeedback(data, stepIndex, attempt, id, {
         score: check.score,
         words: (check.missed || []).map((word) => ({ word, score: 0 })),
-        heard: text,
+        heard: transcript,
         wordsOnly: true,
       });
     }
 
     setStage("checking");
+    if (!azureRef.current) {
+      try {
+        return await compareWithTranscription();
+      } catch (e) {
+        if (id !== run.current) return;
+        setError(e.message || "I could not check what you said. Tap the microphone to try again.");
+        setStage("ready");
+        return;
+      }
+    }
+
     let outcome;
     try {
       const res = await fetch(
@@ -323,24 +335,31 @@ export default function TeacherScreen() {
           body: blob,
         },
       );
-      if (!res.ok) throw new Error("check failed");
+      if (!res.ok) throw new Error("Pronunciation assessment is unavailable for this language.");
       outcome = await res.json();
     } catch (e) {
       if (id !== run.current) return;
-      setError(
-        "The pronunciation check did not work. Tap the microphone to try again.",
-      );
-      setStage("ready");
-      return;
+      // Do not leave learners stuck when Azure rejects a language or recording.
+      try {
+        return await compareWithTranscription();
+      } catch (fallbackError) {
+        if (id !== run.current) return;
+        setError(fallbackError.message || "I could not check what you said. Please try again.");
+        setStage("ready");
+        return;
+      }
     }
     if (id !== run.current) return;
 
     if (!outcome.heard) {
-      return giveFeedback(data, stepIndex, attempt, id, {
-        none: true,
-        score: 0,
-        words: [],
-      });
+      try {
+        return await compareWithTranscription();
+      } catch (e) {
+        if (id !== run.current) return;
+        setError(e.message || "I could not recognise your speech. Please try again.");
+        setStage("ready");
+        return;
+      }
     }
 
     if (!outcome.supported) {
