@@ -17,6 +17,12 @@ export default function LearnScreen({ navigation }) {
         onPress={() => navigation.navigate("Placement")}
       />
       <Tile
+        icon="🏫"
+        title="AI classroom"
+        text="Enter your classroom, meet your teacher and practise speaking together"
+        onPress={() => navigation.navigate("Teacher")}
+      />
+      <Tile
         icon="🎓"
         title="Complete language lesson"
         text="Learn vocabulary, grammar, listening, speaking, reading and writing"
