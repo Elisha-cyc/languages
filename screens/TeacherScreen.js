@@ -467,21 +467,21 @@ export default function TeacherScreen() {
     voice.cancel();
     setPhase("done");
     // Save evidence from this lesson so the teacher can plan the next one.
-    fetch(`${API_URL}/teacher/progress`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        language, level, topic: data.topic || topic,
-        results: data.steps.map((step, index) => ({
-          phrase: step.phrase,
-          score: results[index]?.best || 0,
-        })),
-      }),
-    }).then(async (response) => {
-      const saved = await response.json();
-      if (response.ok && saved.profile) setLearnerProfile(saved.profile);
-      else if (!response.ok) console.warn("Teacher progress was not saved:", saved.error);
-    }).catch((saveError) => console.warn("Teacher progress save failed:", saveError.message));
+    const evidence = data.steps.map((step, index) => ({
+      phrase: step.phrase,
+      score: results[index]?.best || 0,
+    })).filter((item) => item.score > 0);
+    if (evidence.length) {
+      fetch(`${API_URL}/teacher/progress`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language, level, topic: data.topic || topic, results: evidence }),
+      }).then(async (response) => {
+        const saved = await response.json();
+        if (response.ok && saved.profile) setLearnerProfile(saved.profile);
+        else if (!response.ok) console.warn("Teacher progress was not saved:", saved.error);
+      }).catch((saveError) => console.warn("Teacher progress save failed:", saveError.message));
+    }
     if (data.closing) {
       await speakAndWait(data.closing, nativeName);
       if (id !== run.current) return;
