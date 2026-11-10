@@ -7,6 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Platform,
+  TextInput,
 } from "react-native";
 import { API_URL, NATIVE_LANGUAGE } from "../config";
 import LanguagePicker from "../components/LanguagePicker";
@@ -94,6 +95,10 @@ export default function TeacherScreen() {
   const [scoring, setScoring] = useState(false); // true when Azure scores the voice
   const [recorderMode, setRecorderMode] = useState(false); // true when we record the voice ourselves
   const [levels, setLevels] = useState(() => new Array(BAR_COUNT).fill(0)); // live sound bars
+  const [classroomInput, setClassroomInput] = useState("");
+  const [classroomMessages, setClassroomMessages] = useState([]);
+  const [classroomBusy, setClassroomBusy] = useState(false);
+  const [classroomError, setClassroomError] = useState(null);
 
   const voice = useVoice(language);
   const run = useRef(0); // numbers each teacher sequence so an old one can be dropped
@@ -153,6 +158,9 @@ export default function TeacherScreen() {
   }
 
   async function start() {
+    setClassroomMessages([]);
+    setClassroomInput("");
+    setClassroomError(null);
     unlockSpeech();
     prepareRecorder();
     setError(null);
@@ -455,6 +463,47 @@ export default function TeacherScreen() {
     }
   }
 
+  // Pause the phrase drill and let the learner have a real back-and-forth with
+  // the teacher. The same lesson context and recent dialogue are sent to AI.
+  async function askTeacher() {
+    const question = classroomInput.trim();
+    if (!question || classroomBusy || !lesson) return;
+    const prior = classroomMessages.slice(-12).map((message) => ({
+      role: message.role,
+      content: message.role === "assistant"
+        ? `Teacher explanation: ${message.explanation}\nModel: ${message.model}\nPractice: ${message.practicePrompt}`
+        : message.content,
+    }));
+    const id = ++run.current;
+    cancelRecording();
+    voice.cancel();
+    stopSpeaking();
+    setStage("ready");
+    setClassroomMessages((current) => [...current, { role: "user", content: question }]);
+    setClassroomInput("");
+    setClassroomBusy(true);
+    setClassroomError(null);
+    try {
+      const step = lesson.steps[index];
+      const response = await fetch(`${API_URL}/teacher/classroom`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ language, level, topic: lesson.topic || topic, question, currentPhrase: step?.phrase, currentMeaning: step?.meaning, history: prior }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Your teacher could not answer just now.");
+      if (id !== run.current) return;
+      setClassroomMessages((current) => [...current, { role: "assistant", ...data }]);
+      await speakAndWait(data.explanation, nativeName);
+      if (id !== run.current) return;
+      await speakAndWait(data.model, language, { rate: SLOW });
+    } catch (e) {
+      if (id === run.current) setClassroomError(e.message || "Could not reach your teacher. Please try again.");
+    } finally {
+      if (id === run.current) setClassroomBusy(false);
+    }
+  }
+
   // ---------- Buttons ----------
 
   function hear(rate) {
@@ -552,6 +601,9 @@ export default function TeacherScreen() {
     voice.cancel();
     cancelRecording();
     setLesson(null);
+    setClassroomMessages([]);
+    setClassroomInput("");
+    setClassroomBusy(false);
     setPhase("setup");
   }
 
@@ -690,11 +742,16 @@ export default function TeacherScreen() {
   const slowAnswer = result && result.verdict === "practice";
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.small}>
-        {lesson.teacher} - {lesson.title} - phrase {index + 1} of{" "}
-        {lesson.steps.length}
-      </Text>
+    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <View style={styles.classroomHeader}>
+        <View style={styles.teacherAvatar}><Text style={styles.teacherAvatarText}>👩‍🏫</Text></View>
+        <View style={styles.classroomHeaderText}>
+          <Text style={styles.classroomEyebrow}>LINGUA CLASSROOM · IN SESSION</Text>
+          <Text style={styles.classroomTitle}>{lesson.teacher}, your teacher</Text>
+          <Text style={styles.small}>{lesson.title} · {index + 1} of {lesson.steps.length}</Text>
+        </View>
+      </View>
+      <Text style={styles.boardLabel}>TODAY'S LESSON</Text>
 
       <View style={styles.card}>
         <Text style={styles.phrase}>{step.phrase}</Text>
@@ -814,6 +871,34 @@ export default function TeacherScreen() {
 
       {error && <Text style={styles.error}>{error}</Text>}
 
+      <View style={styles.classroomPanel}>
+        <Text style={styles.classroomPanelTitle}>Ask your teacher</Text>
+        <Text style={styles.classroomHint}>Ask why a phrase is used, request another example, or tell your teacher what you do not understand.</Text>
+        {classroomMessages.slice(-6).map((message, messageIndex) => (
+          <View key={messageIndex} style={[styles.classroomBubble, message.role === "user" ? styles.studentBubble : styles.teacherBubble]}>
+            <Text style={styles.classroomSpeaker}>{message.role === "user" ? "YOU" : lesson.teacher.toUpperCase()}</Text>
+            {message.role === "user" ? (
+              <Text style={styles.classroomBody}>{message.content}</Text>
+            ) : (
+              <>
+                <Text style={styles.classroomBody}>{message.explanation}</Text>
+                <Text style={styles.classroomModel}>{message.model}</Text>
+                <Text style={styles.classroomTranslation}>{message.translation}</Text>
+                {message.pronunciation ? <Text style={styles.classroomHint}>Pronunciation: {message.pronunciation}</Text> : null}
+                {message.correction ? <Text style={styles.classroomHint}>Correction: {message.correction.original} → {message.correction.corrected}. {message.correction.reason}</Text> : null}
+                <Text style={styles.classroomPractice}>Your turn: {message.practicePrompt}</Text>
+                {message.practiceTranslation ? <Text style={styles.classroomHint}>{message.practiceTranslation}</Text> : null}
+              </>
+            )}
+          </View>
+        ))}
+        <TextInput style={styles.classroomInput} value={classroomInput} onChangeText={setClassroomInput} placeholder="Ask a question or say what is confusing you..." multiline maxLength={700} editable={!classroomBusy} />
+        <Pressable style={[styles.classroomSend, classroomBusy && styles.buttonOff]} onPress={askTeacher} disabled={classroomBusy || !classroomInput.trim()}>
+          {classroomBusy ? <ActivityIndicator color="white" /> : <Text style={styles.buttonText}>Ask teacher ↗</Text>}
+        </Pressable>
+        {classroomError ? <Text style={styles.error}>{classroomError}</Text> : null}
+      </View>
+
       <View style={styles.row}>
         <Pressable style={styles.round} onPress={() => hear(0)}>
           <Text style={styles.roundText}>🔊 Hear it</Text>
@@ -885,7 +970,27 @@ export default function TeacherScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, padding: 24, backgroundColor: "#f2f4f8" },
+  container: { flexGrow: 1, padding: 20, backgroundColor: "#f2f4f8" },
+  classroomHeader: { flexDirection: "row", alignItems: "center", backgroundColor: "#17324d", borderRadius: 18, padding: 16, marginBottom: 16 },
+  teacherAvatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", marginRight: 13 },
+  teacherAvatarText: { fontSize: 34 },
+  classroomHeaderText: { flex: 1 },
+  classroomEyebrow: { color: "#a9d9e8", fontSize: 10, fontWeight: "800", letterSpacing: 1 },
+  classroomTitle: { color: "#fff", fontSize: 19, fontWeight: "800", marginTop: 3 },
+  boardLabel: { color: "#68798c", fontSize: 11, fontWeight: "800", letterSpacing: 1, marginTop: 3 },
+  classroomPanel: { backgroundColor: "#fff", borderRadius: 16, padding: 15, marginTop: 16, borderWidth: 1, borderColor: "#d9dee7" },
+  classroomPanelTitle: { fontSize: 19, fontWeight: "800", color: "#18324d" },
+  classroomHint: { color: "#667085", fontSize: 13, lineHeight: 19, marginTop: 5 },
+  classroomBubble: { borderRadius: 13, padding: 12, marginTop: 10 },
+  studentBubble: { backgroundColor: "#eaf2ff", alignSelf: "flex-end", maxWidth: "92%" },
+  teacherBubble: { backgroundColor: "#f3f6f8", alignSelf: "stretch" },
+  classroomSpeaker: { fontSize: 10, color: "#6b7b8c", fontWeight: "800", marginBottom: 5, letterSpacing: 0.8 },
+  classroomBody: { color: "#27384a", fontSize: 15, lineHeight: 22 },
+  classroomModel: { color: "#173f75", fontSize: 21, fontWeight: "800", marginTop: 9 },
+  classroomTranslation: { color: "#526273", fontSize: 14, marginTop: 3 },
+  classroomPractice: { color: "#176b61", fontWeight: "700", marginTop: 10, lineHeight: 20 },
+  classroomInput: { minHeight: 76, borderWidth: 1, borderColor: "#cbd5df", borderRadius: 11, padding: 12, marginTop: 13, textAlignVertical: "top", color: "#243447" },
+  classroomSend: { backgroundColor: "#176b83", paddingVertical: 13, borderRadius: 11, alignItems: "center", marginTop: 9 },
   title: { fontSize: 26, fontWeight: "bold", marginBottom: 8 },
   note: { color: "#555", lineHeight: 21, marginBottom: 12 },
   label: { marginTop: 14, marginBottom: 6, color: "#555", fontSize: 14 },

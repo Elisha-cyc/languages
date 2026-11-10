@@ -37,6 +37,7 @@ jobs:
       - run: node --check course-validation.js
       - run: node --check tts.js
       - run: node --check sleep.js
+      - run: node --check teacher.js
       - run: node --check hanzi.js
       - run: node --check server.js
 

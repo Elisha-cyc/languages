@@ -6,15 +6,17 @@
 
 const { complete } = require("./ai");
 
-async function completeJson(messages, maxTokens) {
+async function completeJson(messages, maxTokens, model, options = {}) {
+  const jsonOptions = {
+    ...options,
+    response_format: { type: "json_object" },
+  };
   try {
-    return await complete(messages, maxTokens, undefined, {
-      response_format: { type: "json_object" },
-    });
+    return await complete(messages, maxTokens, model, jsonOptions);
   } catch (err) {
     const message = String(err.message);
     if (/\b400\b/.test(message) && /response_format|json/i.test(message)) {
-      return complete(messages, maxTokens);
+      return complete(messages, maxTokens, model, options);
     }
     throw err;
   }
