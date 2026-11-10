@@ -637,7 +637,19 @@ export default function TeacherScreen() {
   if (phase === "setup" || phase === "loading") {
     return (
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Learn with a teacher</Text>
+        <View style={styles.setupHero}>
+          <View style={styles.setupHeroCopy}>
+            <Text style={styles.setupEyebrow}>YOUR PERSONAL LANGUAGE CLASS</Text>
+            <Text style={styles.setupHeroTitle}>Welcome to your classroom</Text>
+            <Text style={styles.setupHeroText}>Meet your AI teacher, learn on the board, speak aloud and get guided feedback as you go.</Text>
+          </View>
+          <View style={styles.setupTeacher}>
+            <View style={styles.setupHair}><View style={styles.setupFace}><View style={styles.faceEyes}><View style={styles.faceEye} /><View style={styles.faceEye} /></View><View style={styles.faceSmile} /></View></View>
+            <View style={styles.setupTorso}><View style={styles.setupArmLeft} /><View style={styles.setupArmRight} /></View>
+            <View style={styles.setupTeacherBase} />
+          </View>
+          <View style={styles.setupBoard}><Text style={styles.setupBoardLabel}>TODAY'S GOAL</Text><Text style={styles.setupBoardText}>Listen · Learn · Speak</Text></View>
+        </View>
         <Text style={styles.note}>
           Your AI teacher explains each phrase, says it slowly, then listens to
           you, scores your pronunciation and moves on by itself. After you tap
@@ -769,22 +781,48 @@ export default function TeacherScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-      <View style={styles.classroomHeader}>
-        <View style={styles.teacherAvatar}><Text style={styles.teacherAvatarText}>👩‍🏫</Text></View>
-        <View style={styles.classroomHeaderText}>
-          <Text style={styles.classroomEyebrow}>LINGUA CLASSROOM · IN SESSION</Text>
-          <Text style={styles.classroomTitle}>{lesson.teacher}, your teacher</Text>
-          <Text style={styles.small}>{lesson.title} · {index + 1} of {lesson.steps.length}</Text>
+      <View style={styles.classroomScene}>
+        <View style={styles.sceneTopLine}>
+          <View>
+            <Text style={styles.classroomEyebrow}>LINGUA CLASSROOM</Text>
+            <Text style={styles.sceneTitle}>Live lesson</Text>
+          </View>
+          <View style={styles.livePill}><View style={styles.liveDot} /><Text style={styles.liveText}>IN CLASS</Text></View>
+        </View>
+        <View style={styles.sceneRoom}>
+          <View style={styles.sceneWindow}><View style={styles.windowPane} /><View style={styles.windowPane} /></View>
+          <View style={styles.sceneBoard}>
+            <Text style={styles.sceneBoardSmall}>TODAY'S LESSON · {index + 1}/{lesson.steps.length}</Text>
+            <Text style={styles.sceneBoardMain}>{step.phrase}</Text>
+            <Text style={styles.sceneBoardSub}>{step.pronunciation || step.meaning}</Text>
+          </View>
+          <View style={styles.teacherFigure}>
+            <View style={styles.teacherHair}>
+              <View style={styles.teacherHead}>
+                <View style={styles.teacherEyes}><View style={styles.teacherEye} /><View style={styles.teacherEye} /></View>
+                <View style={styles.teacherSmile} />
+              </View>
+            </View>
+            <View style={styles.teacherBody}><View style={styles.teacherShirt}><Text style={styles.teacherBadge}>✦</Text></View></View>
+            <View style={styles.teacherArm} />
+          </View>
+          <View style={styles.sceneDesk}><Text style={styles.sceneDeskText}>YOUR TEACHER · {lesson.teacher}</Text></View>
+        </View>
+        <View style={styles.sceneFooter}>
+          <Text style={styles.sceneFooterText}>{stage === "teaching" ? "Your teacher is explaining…" : stage === "listening" || stage === "ready" ? "Your turn to speak" : stage === "checking" ? "Checking your answer…" : "Let's keep learning together"}</Text>
+          <Text style={styles.sceneProgress}>{index + 1} / {lesson.steps.length}</Text>
         </View>
       </View>
-      <Text style={styles.boardLabel}>TODAY'S LESSON</Text>
 
-      <View style={styles.card}>
+      <View style={styles.lessonBoardCard}>
+        <Text style={styles.lessonBoardEyebrow}>LEARNING BOARD</Text>
+        <View style={styles.card}>
         <Text style={styles.phrase}>{step.phrase}</Text>
         {step.pronunciation ? (
           <Text style={styles.pronunciation}>{step.pronunciation}</Text>
         ) : null}
         <Text style={styles.meaning}>{step.meaning}</Text>
+        </View>
       </View>
 
       {stage === "teaching" && (
@@ -1005,6 +1043,54 @@ export default function TeacherScreen() {
 
 const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: 20, backgroundColor: "#f2f4f8" },
+  setupHero: { minHeight: 245, borderRadius: 24, backgroundColor: "#142f4d", padding: 20, marginBottom: 20, overflow: "hidden" },
+  setupHeroCopy: { maxWidth: "78%", zIndex: 2 },
+  setupEyebrow: { color: "#9de1ed", fontSize: 10, fontWeight: "900", letterSpacing: 1.4 },
+  setupHeroTitle: { color: "#fff", fontSize: 27, lineHeight: 32, fontWeight: "900", marginTop: 10 },
+  setupHeroText: { color: "#d3e3ed", fontSize: 13, lineHeight: 19, marginTop: 8 },
+  setupTeacher: { position: "absolute", right: 14, top: 55, width: 100, height: 125, alignItems: "center", justifyContent: "center", backgroundColor: "#d8f1f4", borderRadius: 50, borderWidth: 5, borderColor: "#ffffff" },
+  setupHair: { width: 62, height: 64, borderRadius: 31, backgroundColor: "#49352f", alignItems: "center", justifyContent: "flex-end", zIndex: 2 },
+  setupFace: { width: 47, height: 49, borderRadius: 24, backgroundColor: "#e9b58f", marginBottom: 1, alignItems: "center", justifyContent: "center" },
+  faceEyes: { flexDirection: "row", gap: 12, marginTop: 7 },
+  faceEye: { width: 4, height: 4, borderRadius: 2, backgroundColor: "#392b2a" },
+  faceSmile: { width: 12, height: 6, borderBottomWidth: 2, borderColor: "#8c4e45", borderRadius: 8, marginTop: 5 },
+  setupTorso: { position: "absolute", bottom: 0, width: 82, height: 66, borderTopLeftRadius: 28, borderTopRightRadius: 28, backgroundColor: "#f5f7f7", zIndex: 1 },
+  setupArmLeft: { position: "absolute", left: -9, top: 12, width: 20, height: 48, borderRadius: 10, backgroundColor: "#e9b58f", transform: [{ rotate: "15deg" }] },
+  setupArmRight: { position: "absolute", right: -9, top: 12, width: 20, height: 48, borderRadius: 10, backgroundColor: "#e9b58f", transform: [{ rotate: "-15deg" }] },
+  setupTeacherBase: { position: "absolute", bottom: -18, width: 68, height: 24, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: "#e4a36f" },
+  setupBoard: { position: "absolute", left: 20, right: 20, bottom: 18, backgroundColor: "#245c61", borderWidth: 5, borderColor: "#bd8c5e", borderRadius: 10, padding: 10 },
+  setupBoardLabel: { color: "#c3e8dc", fontSize: 9, fontWeight: "900", letterSpacing: 1 },
+  setupBoardText: { color: "#fff", fontSize: 15, fontWeight: "800", marginTop: 3 },
+  classroomScene: { backgroundColor: "#17324d", borderRadius: 22, padding: 14, marginBottom: 14, overflow: "hidden" },
+  sceneTopLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  sceneTitle: { color: "#fff", fontSize: 21, fontWeight: "900", marginTop: 2 },
+  livePill: { flexDirection: "row", alignItems: "center", backgroundColor: "#28546a", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 7 },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#75e0a6", marginRight: 6 },
+  liveText: { color: "#d7f5e5", fontSize: 9, fontWeight: "900", letterSpacing: 1 },
+  sceneRoom: { height: 220, backgroundColor: "#e8e2d5", borderRadius: 14, overflow: "hidden", position: "relative", justifyContent: "center" },
+  sceneWindow: { position: "absolute", top: 12, left: 12, width: 55, height: 68, backgroundColor: "#b9e4ee", borderWidth: 5, borderColor: "#fff", flexDirection: "row" },
+  windowPane: { flex: 1, borderRightWidth: 2, borderColor: "#fff" },
+  sceneBoard: { position: "absolute", left: 78, right: 12, top: 15, height: 120, backgroundColor: "#285b50", borderWidth: 5, borderColor: "#b68a61", borderRadius: 7, padding: 10, justifyContent: "center" },
+  sceneBoardSmall: { color: "#c8e8d8", fontSize: 9, fontWeight: "900", letterSpacing: 1 },
+  sceneBoardMain: { color: "#fff", fontSize: 22, fontWeight: "900", marginTop: 8 },
+  sceneBoardSub: { color: "#d6eee3", fontSize: 13, marginTop: 4 },
+  teacherFigure: { position: "absolute", left: 17, bottom: 24, width: 75, height: 115, alignItems: "center" },
+  teacherHair: { width: 57, height: 57, borderRadius: 29, backgroundColor: "#49352f", alignItems: "center", justifyContent: "flex-end", zIndex: 2 },
+  teacherHead: { width: 43, height: 45, borderRadius: 22, backgroundColor: "#e9b58f", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#fff" },
+  teacherEyes: { flexDirection: "row", gap: 11, marginTop: 8 },
+  teacherEye: { width: 4, height: 4, borderRadius: 2, backgroundColor: "#392b2a" },
+  teacherSmile: { width: 11, height: 6, borderBottomWidth: 2, borderColor: "#8c4e45", borderRadius: 8, marginTop: 5 },
+  teacherBody: { width: 63, height: 67, marginTop: -1, borderTopLeftRadius: 18, borderTopRightRadius: 18, backgroundColor: "#f7f8f8", alignItems: "center", justifyContent: "center" },
+  teacherShirt: { width: 23, height: 52, backgroundColor: "#2b7890", alignItems: "center", paddingTop: 8 },
+  teacherBadge: { color: "#fff", fontSize: 12 },
+  teacherArm: { position: "absolute", right: -2, top: 55, width: 31, height: 9, borderRadius: 5, backgroundColor: "#f1c49d", transform: [{ rotate: "-35deg" }] },
+  sceneDesk: { position: "absolute", bottom: 0, left: 0, right: 0, height: 19, backgroundColor: "#b88a60", alignItems: "center", justifyContent: "center" },
+  sceneDeskText: { color: "#fff", fontSize: 8, fontWeight: "900", letterSpacing: 1 },
+  sceneFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 12 },
+  sceneFooterText: { color: "#e1edf4", fontSize: 12, fontWeight: "700" },
+  sceneProgress: { color: "#9de1ed", fontSize: 12, fontWeight: "900" },
+  lessonBoardCard: { backgroundColor: "#fff", borderRadius: 17, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: "#d9dee7" },
+  lessonBoardEyebrow: { color: "#68798c", fontSize: 10, fontWeight: "900", letterSpacing: 1, marginLeft: 5 },
   classroomHeader: { flexDirection: "row", alignItems: "center", backgroundColor: "#17324d", borderRadius: 18, padding: 16, marginBottom: 16 },
   teacherAvatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", marginRight: 13 },
   teacherAvatarText: { fontSize: 34 },
