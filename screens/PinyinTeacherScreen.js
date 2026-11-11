@@ -50,6 +50,18 @@ const LESSONS = {
     ["ou", "kǒu", "口", "Start rounded and glide toward u."],
     ["iu", "liù", "六", "This final glides from i toward u."],
     ["ie", "xiè", "谢", "Start with i and glide toward e."],
+    ["ia", "jiā", "家", "Begin with a clear i glide, then open into a."],
+    ["iao", "xiǎo", "小", "Begin with i, open toward a, then glide toward o."],
+    ["ian", "tiān", "天", "Begin with i and finish with the front nasal n."],
+    ["iang", "liǎng", "两", "Begin with i and finish with the back nasal ng."],
+    ["iong", "xiōng", "兄", "Begin with i and move into the rounded nasal ending."],
+    ["ua", "huā", "花", "Begin with a rounded u glide, then open into a."],
+    ["uo", "guō", "锅", "Begin with a rounded u glide and finish with o."],
+    ["uai", "kuài", "快", "Begin with u and glide through a toward i."],
+    ["uan", "guān", "关", "Begin with u and finish with the front nasal n."],
+    ["uang", "huáng", "黄", "Begin with u and finish with the back nasal ng."],
+    ["üan", "yuán", "元", "Begin with ü and finish with the front nasal n; after y, ü is written u."],
+    ["ueng", "wēng", "翁", "A zero-initial final written as weng; it is not normally combined with a consonant initial."],
     ["üe", "yuè", "月", "Round the lips for ü, then glide toward e."],
     ["er", "èr", "二", "Curl the tongue slightly back as you finish the vowel."],
     ["an", "ān", "安", "Start open, then close the sound through the nose."],
@@ -182,8 +194,7 @@ export default function PinyinTeacherScreen() {
       <Text style={styles.title}>Chinese pinyin teacher</Text>
       <Text style={styles.note}>
         Hear a model, learn how to form the sound, then repeat it. Work through
-        initials, finals, and all four tones. This is the pronunciation
-        foundation for the HSK 1 Chinese course.
+        initials, finals, and all four tones. The chart covers 21 standard initials and 36 commonly taught finals, including zero-initial spellings. Remember that y and w are spelling forms, not extra consonant initials; iu, ui and un are contracted spellings of iou, uei and uen.
       </Text>
 
       <View style={styles.categories}>
