@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useClassroomPresentation } from "../components/ClassroomPresentation";
 import {
   StyleSheet,
   Text,
@@ -102,6 +103,7 @@ export default function TeacherScreen() {
   const [learnerProfile, setLearnerProfile] = useState(null);
 
   const voice = useVoice(language);
+  const classroom = useClassroomPresentation();
   const run = useRef(0); // numbers each teacher sequence so an old one can be dropped
   const recording = useRef(null);
   const handled = useRef(false); // one result per try
@@ -235,9 +237,19 @@ export default function TeacherScreen() {
         ? `${data.greeting} ${step.teach}`
         : step.teach;
 
-    await speakAndWait(intro, nativeName);
-    if (id !== run.current) return;
-    await speakAndWait(step.phrase, language, { rate: SLOW });
+    classroom.setBoard({
+      primary: step.phrase,
+      secondary: step.pronunciation || step.pinyin || step.teach || "Listen and repeat",
+      translation: step.meaning || step.translation || "",
+    });
+    classroom.setSpeaking(true);
+    try {
+      await speakAndWait(intro, nativeName);
+      if (id !== run.current) return;
+      await speakAndWait(step.phrase, language, { rate: SLOW });
+    } finally {
+      classroom.setSpeaking(false);
+    }
     if (id !== run.current) return;
     listen(data, stepIndex, 0, id);
   }
@@ -256,6 +268,7 @@ export default function TeacherScreen() {
     }
 
     setStage("listening");
+    classroom.setSpeaking(false);
     heardVoice.current = false;
     listenStartedAt.current = Date.now();
     try {
