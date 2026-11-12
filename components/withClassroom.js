@@ -1,5 +1,6 @@
-import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Animated, StyleSheet, Text, View } from "react-native";
+import { ClassroomPresentationProvider, useClassroomPresentation } from "./ClassroomPresentation";
 
 /**
  * Shared classroom frame for every teaching activity.
@@ -8,43 +9,73 @@ import { StyleSheet, Text, View } from "react-native";
  */
 export default function withClassroom(Screen, title, prompt = "Watch • Listen • Practise") {
   function ClassroomScreen(props) {
+    const [board, setBoard] = useState({ primary: title, secondary: prompt, translation: "" });
+    const [speaking, setSpeaking] = useState(false);
+    const mouth = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+      if (!speaking) {
+        mouth.stopAnimation();
+        mouth.setValue(0);
+        return undefined;
+      }
+      const animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(mouth, { toValue: 1, duration: 130, useNativeDriver: false }),
+          Animated.timing(mouth, { toValue: 0, duration: 110, useNativeDriver: false }),
+          Animated.timing(mouth, { toValue: 0.65, duration: 90, useNativeDriver: false }),
+          Animated.timing(mouth, { toValue: 0, duration: 150, useNativeDriver: false }),
+        ]),
+      );
+      animation.start();
+      return () => animation.stop();
+    }, [speaking, mouth]);
+
+    const presentation = {
+      setBoard: (next) => setBoard((current) => ({ ...current, ...next })),
+      setSpeaking,
+    };
+
     return (
-      <View style={styles.screen}>
-        <View style={styles.classroom}>
-          <View style={styles.wallLight} />
-          <View style={styles.board}>
-            <View style={styles.boardTop}>
-              <View style={styles.boardDot} />
-              <Text style={styles.eyebrow}>LINGUA CLASSROOM</Text>
-              <Text style={styles.live}>LIVE LESSON</Text>
+      <ClassroomPresentationProvider value={presentation}>
+        <View style={styles.screen}>
+          <View style={styles.classroom}>
+            <View style={styles.wallLight} />
+            <View style={styles.board}>
+              <View style={styles.boardTop}>
+                <View style={styles.boardDot} />
+                <Text style={styles.eyebrow}>LINGUA CLASSROOM</Text>
+                <Text style={styles.live}>{speaking ? "TEACHER SPEAKING" : "LESSON BOARD"}</Text>
+              </View>
+              <Text style={styles.lessonTitle}>{board.primary}</Text>
+              {!!board.secondary && <Text style={styles.prompt}>{board.secondary}</Text>}
+              {!!board.translation && <Text style={styles.boardTranslation}>{board.translation}</Text>}
+              <View style={styles.chalkLine} />
             </View>
-            <Text style={styles.lessonTitle}>{title}</Text>
-            <Text style={styles.prompt}>{prompt}</Text>
-            <View style={styles.chalkLine} />
+            <View style={styles.teacher} accessibilityLabel="Your AI teacher standing beside the classroom board">
+              <View style={styles.hair} />
+              <View style={styles.face}>
+                <View style={styles.eyes}><View style={styles.eye} /><View style={styles.eye} /></View>
+                <Animated.View style={[styles.mouth, { height: mouth.interpolate({ inputRange: [0, 1], outputRange: [2, 8] }) }]} />
+              </View>
+              <View style={styles.neck} />
+              <View style={styles.body}>
+                <View style={styles.tie} />
+                <View style={styles.arm} />
+              </View>
+            </View>
           </View>
-          <View style={styles.teacher} accessibilityLabel="Your classroom teacher">
-            <View style={styles.hair} />
-            <View style={styles.face}>
-              <View style={styles.eyes}><View style={styles.eye} /><View style={styles.eye} /></View>
-              <View style={styles.smile} />
+          <View style={styles.activity}>
+            <View style={styles.activityBar}>
+              <View style={styles.activityDot} />
+              <Text style={styles.activityLabel}>YOUR TEACHER IS GUIDING THIS ACTIVITY</Text>
             </View>
-            <View style={styles.neck} />
-            <View style={styles.body}>
-              <View style={styles.tie} />
-              <View style={styles.arm} />
+            <View style={styles.content}>
+              <Screen {...props} />
             </View>
           </View>
         </View>
-        <View style={styles.activity}>
-          <View style={styles.activityBar}>
-            <View style={styles.activityDot} />
-            <Text style={styles.activityLabel}>YOUR TEACHER IS GUIDING THIS ACTIVITY</Text>
-          </View>
-          <View style={styles.content}>
-            <Screen {...props} />
-          </View>
-        </View>
-      </View>
+      </ClassroomPresentationProvider>
     );
   }
   ClassroomScreen.displayName = `Classroom(${Screen.displayName || Screen.name || "Lesson"})`;
@@ -97,12 +128,13 @@ const styles = StyleSheet.create({
   lessonTitle: { color: "#fffdf0", fontSize: 18, lineHeight: 22, fontWeight: "900" },
   prompt: { color: "#d6e5d8", fontSize: 10, marginTop: 4, fontWeight: "600" },
   chalkLine: { height: 1, width: "72%", backgroundColor: "#b7cbb7", opacity: 0.65, marginTop: 7 },
+  boardTranslation: { color: "#f0d995", fontSize: 13, fontWeight: "800", marginTop: 5 },
   teacher: { width: 76, height: 124, marginLeft: 8, alignItems: "center", justifyContent: "flex-end" },
   hair: { position: "absolute", top: 5, width: 42, height: 29, borderTopLeftRadius: 22, borderTopRightRadius: 22, backgroundColor: "#292c32" },
   face: { position: "absolute", top: 12, width: 36, height: 43, borderRadius: 17, backgroundColor: "#c98762", alignItems: "center", justifyContent: "center", zIndex: 2 },
   eyes: { flexDirection: "row", width: 20, justifyContent: "space-between", marginTop: 4 },
   eye: { width: 3, height: 3, borderRadius: 2, backgroundColor: "#302b2b" },
-  smile: { width: 9, height: 4, borderBottomWidth: 1.5, borderColor: "#743f37", borderRadius: 8, marginTop: 5 },
+  mouth: { width: 10, backgroundColor: "#743f37", borderRadius: 6, marginTop: 5 },
   neck: { position: "absolute", top: 50, width: 12, height: 12, backgroundColor: "#b97856" },
   body: { width: 54, height: 58, borderTopLeftRadius: 18, borderTopRightRadius: 18, backgroundColor: "#315b80", alignItems: "center", marginBottom: 0 },
   tie: { width: 9, height: 27, backgroundColor: "#d6b46f", marginTop: 5, transform: [{ rotate: "2deg" }] },
