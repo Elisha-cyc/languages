@@ -1,5 +1,6 @@
-import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Animated, StyleSheet, Text, View } from "react-native";
+import { onSpeechState } from "../speech";
 
 /**
  * Shared classroom frame used by the app's teaching and practice screens.
@@ -8,6 +9,32 @@ import { StyleSheet, Text, View } from "react-native";
  */
 export default function withClassroom(Screen, title, prompt = "Watch • Listen • Practise") {
   function ClassroomScreen(props) {
+    const [speaking, setSpeaking] = useState(false);
+    const mouthMotion = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => onSpeechState(setSpeaking), []);
+
+    useEffect(() => {
+      if (!speaking) {
+        mouthMotion.stopAnimation();
+        mouthMotion.setValue(0);
+        return undefined;
+      }
+      const animation = Animated.loop(Animated.sequence([
+        Animated.timing(mouthMotion, { toValue: 1, duration: 115, useNativeDriver: false }),
+        Animated.timing(mouthMotion, { toValue: 0, duration: 95, useNativeDriver: false }),
+        Animated.timing(mouthMotion, { toValue: 0.65, duration: 85, useNativeDriver: false }),
+        Animated.timing(mouthMotion, { toValue: 0, duration: 125, useNativeDriver: false }),
+      ]));
+      animation.start();
+      return () => animation.stop();
+    }, [speaking, mouthMotion]);
+
+    const mouthHeight = mouthMotion.interpolate({
+      inputRange: [0, 1],
+      outputRange: [2, 8],
+    });
+
     return (
       <View style={styles.screen}>
         <View style={styles.classroom}>
@@ -36,7 +63,7 @@ export default function withClassroom(Screen, title, prompt = "Watch • Listen 
               <View style={styles.brows}><View style={styles.brow} /><View style={styles.brow} /></View>
               <View style={styles.eyes}><View style={styles.eye}><View style={styles.pupil} /></View><View style={styles.eye}><View style={styles.pupil} /></View></View>
               <View style={styles.nose} />
-              <View style={styles.mouth} />
+              <Animated.View style={[styles.mouth, { height: mouthHeight }]} />
             </View>
             <View style={styles.neck} />
             <View style={styles.shirtCollarLeft} />
