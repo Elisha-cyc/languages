@@ -1,5 +1,4 @@
-import { useState, useRef } from "react";
-import { useClassroomPresentation } from "../components/ClassroomPresentation";
+import { useEffect, useState, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -9,6 +8,7 @@ import {
   ActivityIndicator,
   Platform,
   TextInput,
+  Animated,
 } from "react-native";
 import { API_URL, NATIVE_LANGUAGE } from "../config";
 import LanguagePicker from "../components/LanguagePicker";
@@ -82,6 +82,7 @@ const VERDICT_TEXT = {
 
 export default function TeacherScreen() {
   const [phase, setPhase] = useState("setup"); // setup, loading, lesson, done
+  const [boardPhraseVisible, setBoardPhraseVisible] = useState(false);
   const [language, setLanguage] = useState("French");
   const [level, setLevel] = useState("Beginner");
   const [topic, setTopic] = useState(TOPICS.Beginner[0]);
@@ -103,8 +104,24 @@ export default function TeacherScreen() {
   const [learnerProfile, setLearnerProfile] = useState(null);
 
   const voice = useVoice(language);
-  const classroom = useClassroomPresentation();
   const run = useRef(0); // numbers each teacher sequence so an old one can be dropped
+  const mouth = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (stage !== "teaching") {
+      mouth.stopAnimation();
+      mouth.setValue(0);
+      return undefined;
+    }
+    const animation = Animated.loop(Animated.sequence([
+      Animated.timing(mouth, { toValue: 1, duration: 120, useNativeDriver: false }),
+      Animated.timing(mouth, { toValue: 0, duration: 100, useNativeDriver: false }),
+      Animated.timing(mouth, { toValue: 0.7, duration: 90, useNativeDriver: false }),
+      Animated.timing(mouth, { toValue: 0, duration: 140, useNativeDriver: false }),
+    ]));
+    animation.start();
+    return () => animation.stop();
+  }, [stage, mouth]);
   const recording = useRef(null);
   const handled = useRef(false); // one result per try
   const scoringRef = useRef(false); // true: we record the voice ourselves
@@ -237,19 +254,11 @@ export default function TeacherScreen() {
         ? `${data.greeting} ${step.teach}`
         : step.teach;
 
-    classroom.setBoard({
-      primary: step.phrase,
-      secondary: step.pronunciation || step.pinyin || step.teach || "Listen and repeat",
-      translation: step.meaning || step.translation || "",
-    });
-    classroom.setSpeaking(true);
-    try {
-      await speakAndWait(intro, nativeName);
-      if (id !== run.current) return;
-      await speakAndWait(step.phrase, language, { rate: SLOW });
-    } finally {
-      classroom.setSpeaking(false);
-    }
+    setBoardPhraseVisible(false);
+    await speakAndWait(intro, nativeName);
+    if (id !== run.current) return;
+    setBoardPhraseVisible(true);
+    await speakAndWait(step.phrase, language, { rate: SLOW });
     if (id !== run.current) return;
     listen(data, stepIndex, 0, id);
   }
@@ -268,7 +277,6 @@ export default function TeacherScreen() {
     }
 
     setStage("listening");
-    classroom.setSpeaking(false);
     heardVoice.current = false;
     listenStartedAt.current = Date.now();
     try {
@@ -806,14 +814,14 @@ export default function TeacherScreen() {
           <View style={styles.sceneWindow}><View style={styles.windowPane} /><View style={styles.windowPane} /></View>
           <View style={styles.sceneBoard}>
             <Text style={styles.sceneBoardSmall}>TODAY'S LESSON · {index + 1}/{lesson.steps.length}</Text>
-            <Text style={styles.sceneBoardMain}>{step.phrase}</Text>
-            <Text style={styles.sceneBoardSub}>{step.pronunciation || step.meaning}</Text>
+            <Text style={styles.sceneBoardMain}>{boardPhraseVisible ? step.phrase : "Listen to your teacher…"}</Text>
+            {boardPhraseVisible ? <Text style={styles.sceneBoardSub}>{step.pronunciation || step.meaning}</Text> : null}
           </View>
           <View style={styles.teacherFigure}>
             <View style={styles.teacherHair}>
               <View style={styles.teacherHead}>
                 <View style={styles.teacherEyes}><View style={styles.teacherEye} /><View style={styles.teacherEye} /></View>
-                <View style={styles.teacherSmile} />
+                <Animated.View style={[styles.teacherSmile, { height: mouth.interpolate({ inputRange: [0, 1], outputRange: [2, 9] }) }]} />
               </View>
             </View>
             <View style={styles.teacherBody}><View style={styles.teacherShirt}><Text style={styles.teacherBadge}>✦</Text></View></View>
