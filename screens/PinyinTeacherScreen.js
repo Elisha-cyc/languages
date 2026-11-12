@@ -224,7 +224,8 @@ export default function PinyinTeacherScreen() {
       </Text>
 
       <View style={styles.card}>
-        <Text style={styles.sound}>{item.title}</Text>
+        <Text style={styles.sound}>TEACHER’S CHALKBOARD · {category.toUpperCase()}</Text>
+        <Text style={[styles.sound, { marginTop: 8, color: "#d6e5d8" }]}>{item.title} · LESSON {index + 1}</Text>
         <Text style={styles.pinyin}>{item.pinyin}</Text>
         <Text style={styles.character}>{item.character}</Text>
         {category === "tones" ? (
@@ -232,6 +233,8 @@ export default function PinyinTeacherScreen() {
         ) : null}
         <Text style={styles.cue}>{item.cue}</Text>
       </View>
+
+      <Text style={{ color: "#42665b", fontSize: 13, fontWeight: "800", textAlign: "center", marginTop: 12 }}>CLASSROOM TASK: listen to the teacher, copy the mouth position, then repeat the sound.</Text>
 
       <Pressable style={styles.secondaryButton} onPress={hearTeacher}>
         <Text style={styles.secondaryText}>🔊 Hear the teacher</Text>
@@ -342,17 +345,20 @@ const styles = StyleSheet.create({
   progress: { color: "#667085", fontSize: 13, marginTop: 18, marginBottom: 8 },
   card: {
     alignItems: "center",
-    backgroundColor: "white",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#d5d9e0",
+    backgroundColor: "#17483f",
+    borderRadius: 8,
+    borderWidth: 7,
+    borderColor: "#96734c",
     padding: 22,
+    minHeight: 230,
+    justifyContent: "center",
+    shadowColor: "#172b24", shadowOpacity: 0.22, shadowRadius: 5, elevation: 3,
   },
-  sound: { color: "#667085", fontSize: 16, fontWeight: "700" },
-  pinyin: { color: "#2a6fdb", fontSize: 36, fontWeight: "700", marginTop: 5 },
-  character: { color: "#1d2939", fontSize: 64, marginTop: 3 },
-  contour: { color: "#8b5cf6", fontSize: 25, fontWeight: "700", marginTop: 2 },
-  cue: { color: "#475467", fontSize: 16, lineHeight: 23, textAlign: "center", marginTop: 14 },
+  sound: { color: "#e7d59d", fontSize: 15, fontWeight: "900", letterSpacing: 1.1 },
+  pinyin: { color: "#fffdf0", fontSize: 42, fontWeight: "900", marginTop: 8 },
+  character: { color: "#fffdf0", fontSize: 64, marginTop: 3 },
+  contour: { color: "#f0d99b", fontSize: 25, fontWeight: "900", marginTop: 2 },
+  cue: { color: "#d6e5d8", fontSize: 16, lineHeight: 23, textAlign: "center", marginTop: 14 },
   secondaryButton: {
     alignItems: "center",
     backgroundColor: "#dbe7ff",
