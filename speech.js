@@ -47,6 +47,19 @@ export const SPEECH_LANGUAGES = Object.keys(LANGUAGE_CODES);
 // ---------- A shared place to report problems, so one banner can show them ----------
 
 const listeners = new Set();
+const speechStateListeners = new Set();
+let speechIsActive = false;
+
+export function onSpeechState(listener) {
+  speechStateListeners.add(listener);
+  listener(speechIsActive);
+  return () => speechStateListeners.delete(listener);
+}
+
+function setSpeechActive(active) {
+  speechIsActive = active;
+  speechStateListeners.forEach((listener) => listener(active));
+}
 
 export function onSpeechProblem(listener) {
   listeners.add(listener);
@@ -564,6 +577,11 @@ export async function speak(text, language, options = {}) {
   const myRun = ++run;
   Speech.stop();
   stopCloud();
+  setSpeechActive(true);
+  const finishSpeech = () => {
+    if (myRun === run) setSpeechActive(false);
+    if (onFinish) onFinish();
+  };
 
   // Leave recording mode before playing lesson audio. On iOS, play-and-record
   // can route sound to the receiver; playback mode restores normal media routing.
@@ -589,7 +607,7 @@ export async function speak(text, language, options = {}) {
     (await speakCloud(
       cleaned,
       language,
-      { rate: speechOptions.rate, onFinish },
+      { rate: speechOptions.rate, onFinish: finishSpeech },
       myRun,
     ))
   ) {
@@ -604,12 +622,13 @@ export async function speak(text, language, options = {}) {
   if (known && !voice) {
     const reason = `This device has no ${language} voice. Open "Check speech" in Profile to see what to install.`;
     report(reason);
+    finishSpeech();
     return { ok: false, reason };
   }
 
   const chunks = chunkText(cleaned);
   if (chunks.length === 0) {
-    onFinish && onFinish();
+    finishSpeech();
     return { ok: true };
   }
 
@@ -620,6 +639,7 @@ export async function speak(text, language, options = {}) {
       if (started || myRun !== run) return;
       const reason = `No sound started for ${language}. Check the volume and the silent switch, and the voice in "Check speech".`;
       report(reason);
+      finishSpeech();
       resolve({ ok: false, reason });
     }, START_TIMEOUT_MS);
 
@@ -641,7 +661,7 @@ export async function speak(text, language, options = {}) {
           resolve({ ok: true });
         },
         onDone: () => {
-          if (index + 1 >= chunks.length) onFinish && onFinish();
+          if (index + 1 >= chunks.length) finishSpeech();
           else sayPiece(index + 1);
         },
         onError: () => {
@@ -649,7 +669,7 @@ export async function speak(text, language, options = {}) {
           const reason = `The ${language} voice could not play. Try again, or open "Check speech" in Profile.`;
           report(reason);
           resolve({ ok: false, reason });
-          onFinish && onFinish();
+          finishSpeech();
         },
       });
     }
@@ -689,6 +709,7 @@ export function speakAndWait(text, language, options = {}) {
 
 export function stopSpeaking() {
   run++;
+  setSpeechActive(false);
   Speech.stop();
   stopCloud();
 }
