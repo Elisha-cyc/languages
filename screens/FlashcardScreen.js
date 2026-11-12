@@ -166,6 +166,14 @@ export default function FlashcardScreen({ navigation, route }) {
         </View>
       )}
 
+      <View style={styles.lessonBoard}>
+        <Text style={styles.boardEyebrow}>TEACHER’S BOARD · LESSON {index + 1}</Text>
+        <Text style={styles.boardPrompt}>{showMeaning ? "UNDERSTAND THE MEANING" : "LOOK • LISTEN • REMEMBER"}</Text>
+        <Text style={styles.boardWord}>{card.word}</Text>
+        {!!card.pronunciation && <Text style={styles.boardPronunciation}>{card.pronunciation}</Text>}
+        <Text style={styles.boardHint}>{showMeaning ? "Now connect the word to its meaning below." : "Your teacher wants you to recall this before revealing the answer."}</Text>
+      </View>
+
       <Pressable
         style={styles.card}
         onPress={() => setShowMeaning(!showMeaning)}
